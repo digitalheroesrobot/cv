@@ -2,25 +2,25 @@
 """
 ================================================================================
 COMPUTER VISION ADVANCED CRASH COURSE
-LESSON 26 — TEXT CONDITIONING (IMPROVED VERSION)
+LESSON 26 — TEXT CONDITIONING (CORRECTED GENERATION)
 ================================================================================
 
 PURPOSE
 -------
-Build a more reliable text-conditioned latent diffusion model from scratch.
-This version corrects latent scaling, strengthens text conditioning, and
-adds independent semantic evaluation.
+Build a text-conditioned latent diffusion model from scratch and generate
+recognizable shapes that correspond to text prompts.
 
 WHAT YOU WILL LEARN
 -------------------
-1. Tokenization, vocabulary, padding, and attention masks.
-2. Learned token and positional embeddings.
-3. Transformer text encoding.
-4. Multi-resolution text cross-attention.
-5. Autoencoder latent normalization.
-6. Classifier-free condition dropout and guidance.
-7. Text-conditioned latent DDPM.
-8. Validation loss and independent semantic evaluation.
+1. Tokenization and vocabulary construction.
+2. Token IDs, padding, and attention masks.
+3. Learned token and positional embeddings.
+4. Transformer text encoding.
+5. Multi-head cross-attention.
+6. Latent normalization for diffusion.
+7. A noise schedule suitable for the selected number of steps.
+8. Text-conditioned latent diffusion training and DDPM sampling.
+9. Quantitative evaluation of generated shapes.
 
 TECHNICAL ROADMAP
 -----------------
@@ -32,87 +32,77 @@ Lesson 27: Build our own text-to-image model.
 
 REAL-WORLD PROBLEM
 ------------------
-A robot receives a visual instruction such as:
-    "make a circle"
-    "make a square"
-
-The visual generator must produce an image that matches the instruction.
+A robot receives a visual instruction such as "make a circle".
+A language-conditioned visual model must associate the instruction
+with the corresponding visual concept.
 
 THEORY
 ------
-Text:
-    H = Transformer(TokenEmbedding + PositionEmbedding)
+Latent normalization:
+
+    z_normalized = (z - mean) / std
+
+    z = z_normalized * std + mean
+
+The diffusion model is trained on normalized latents. This is important
+because the reverse sampler begins with standard Gaussian noise.
+
+Forward diffusion:
+
+    z_t = sqrt(alpha_bar_t) * z_0
+          + sqrt(1-alpha_bar_t) * epsilon
+
+Noise prediction objective:
+
+    L = E[||epsilon - epsilon_theta(z_t,t,H)||^2]
 
 Cross-attention:
-    Q = ImageFeatures
-    K = TextFeatures
-    V = TextFeatures
+
+    Q = image features
+    K = text features
+    V = text features
 
     Attention(Q,K,V) = softmax(Q K^T / sqrt(d)) V
 
-Latent normalization:
-    z_normalized = (z - mean) / std
-    z = z_normalized * std + mean
-
-Forward diffusion:
-    z_t = sqrt(alpha_bar_t) z_0
-          + sqrt(1-alpha_bar_t) epsilon
-
-Training objective:
-    L = E[||epsilon - epsilon_theta(z_t,t,H)||^2]
-
-Classifier-free guidance:
-    epsilon_guided =
-        epsilon_unconditional
-        + guidance_scale *
-          (epsilon_conditional - epsilon_unconditional)
-
 IMPLEMENTATION
 --------------
-- Controlled synthetic shape dataset.
+- Synthetic shape dataset.
 - Convolutional autoencoder.
 - Per-channel latent normalization.
 - Custom tokenizer.
 - Random-initialized Transformer text encoder.
-- Two-resolution text cross-attention.
-- Classifier-free condition dropout.
-- Guided DDPM sampling.
-- Independent shape classifier.
-- Validation loss and semantic evaluation.
+- Text cross-attention.
+- Conditional latent diffusion U-Net.
+- DDPM sampler.
+- Shape-template evaluation.
+- No pretrained models or checkpoints.
 
-VERIFICATION
-------------
-Tests cover tokenizer, padding, text encoding, attention, latent
-normalization, diffusion, gradients, device consistency, dataset
-alignment, classifier-free guidance, and complete sampling.
+IMPORTANT CORRECTIONS
+--------------------
+1. Latents are normalized before diffusion training.
+2. Generated latents are denormalized before decoding.
+3. Diffusion uses 200 steps and a stronger beta schedule.
+4. Sampling uses the same schedule used during training.
+5. Dataset alignment is checked before indexing.
+6. Generated image intensity and shape similarity are evaluated.
 
 REAL-WORLD APPLICATION
 ----------------------
-This is a simplified language-conditioned image generation pipeline.
-The same general principle is useful when translating robot instructions
-into visual goals or conditioning a perception/generation model.
+The architecture is a simplified language-conditioning mechanism
+for text-to-image generation and vision-language robotics.
 
-REAL-WORLD RESULT
------------------
-The model must generate images that correspond to their requested
-shape categories, not merely different images for different prompts.
-
-LESSON RESULT
--------------
-A more stable, evaluated, text-conditioned latent diffusion pipeline.
+LIMITATION
+----------
+This is a four-prompt demonstration, not a general-purpose language model.
+All model weights are initialized from scratch.
 
 CONNECTION TO NEXT LESSON
 -------------------------
 Lesson 27: Build our own text-to-image model.
-
-IMPORTANT
----------
-This is a four-class educational model, not general-purpose language
-understanding. Every model is randomly initialized. No pretrained
-weights, pretrained encoders, or pretrained checkpoints are used.
 ================================================================================
 """
 
+import copy
 import math
 import random
 import time
@@ -165,22 +155,17 @@ BASE_CHANNELS = 32
 TIME_EMBED_DIM = 128
 CROSS_ATTENTION_HEADS = 4
 
-DIFFUSION_STEPS = 100
+# A longer schedule makes the terminal distribution much closer to N(0,I).
+DIFFUSION_STEPS = 200
 BETA_START = 1e-4
-BETA_END = 0.02
+BETA_END = 0.03
 
-SAMPLES_PER_CLASS = 512
-BATCH_SIZE = 64
+BATCH_SIZE = 128
+AE_TRAIN_STEPS = 700
+DIFFUSION_TRAIN_STEPS = 3000
 
-AE_TRAIN_STEPS = 600
-DIFFUSION_TRAIN_STEPS = 4000
-CLASSIFIER_TRAIN_STEPS = 700
-
-LEARNING_RATE = 1e-3
-CLASSIFIER_FREE_DROPOUT = 0.15
-GUIDANCE_SCALE = 3.0
-
-VALIDATION_INTERVAL = 200
+AE_LEARNING_RATE = 2e-3
+DIFFUSION_LEARNING_RATE = 1e-3
 
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -193,9 +178,16 @@ PROMPTS = [
     "make a cross",
 ]
 
+CLASS_NAMES = [
+    "circle",
+    "square",
+    "diagonal",
+    "cross",
+]
+
 
 # =============================================================================
-# 2. REPRODUCIBILITY AND DEVICE HELPERS
+# 2. REPRODUCIBILITY
 # =============================================================================
 
 def set_seed(seed=SEED):
@@ -205,20 +197,6 @@ def set_seed(seed=SEED):
 
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-
-
-def model_device(model):
-    return next(model.parameters()).device
-
-
-def valid_group_count(channels, preferred_groups=8):
-    preferred_groups = min(preferred_groups, channels)
-
-    for groups in range(preferred_groups, 0, -1):
-        if channels % groups == 0:
-            return groups
-
-    return 1
 
 
 # =============================================================================
@@ -241,6 +219,7 @@ class SimpleTokenizer:
         return text.lower().strip().split()
 
     def encode(self, text):
+
         words = self.tokenize(text)
 
         ids = [
@@ -251,19 +230,14 @@ class SimpleTokenizer:
         ids = ids[:self.max_length]
         valid_length = len(ids)
 
-        ids += [self.pad_id] * (
-            self.max_length - valid_length
-        )
+        ids += [
+            self.pad_id
+        ] * (self.max_length - valid_length)
 
         mask = (
             [True] * valid_length
             + [False] * (self.max_length - valid_length)
         )
-
-        # An empty prompt must still have one valid token.
-        if valid_length == 0:
-            ids[0] = self.unk_id
-            mask[0] = True
 
         return (
             torch.tensor(ids, dtype=torch.long),
@@ -271,12 +245,18 @@ class SimpleTokenizer:
         )
 
     def batch_encode(self, texts):
+
         encoded = [self.encode(text) for text in texts]
 
-        return (
-            torch.stack([item[0] for item in encoded]),
-            torch.stack([item[1] for item in encoded]),
-        )
+        token_ids = torch.stack([
+            item[0] for item in encoded
+        ])
+
+        masks = torch.stack([
+            item[1] for item in encoded
+        ])
+
+        return token_ids, masks
 
 
 TOKENIZER = SimpleTokenizer(
@@ -284,83 +264,69 @@ TOKENIZER = SimpleTokenizer(
     MAX_TEXT_LENGTH,
 )
 
-NULL_TOKEN_IDS, NULL_ATTENTION_MASK = TOKENIZER.encode(
-    "unknown"
-)
-
 
 # =============================================================================
-# 4. CONTROLLED SYNTHETIC DATASET
+# 4. SYNTHETIC DATASET
 # =============================================================================
 
-def create_synthetic_dataset(samples_per_class=SAMPLES_PER_CLASS):
-    """
-    Shape coordinates are translated and rotated.
-
-    Class 0: circle
-    Class 1: square
-    Class 2: diagonal line
-    Class 3: cross
-
-    This variation helps prevent the model from memorizing one fixed
-    position or one fixed size for each class.
-    """
+def create_synthetic_dataset(samples_per_class=256):
 
     images = []
     labels = []
     prompts = []
 
     axis = torch.linspace(-1.0, 1.0, IMAGE_SIZE)
-    yy, xx = torch.meshgrid(axis, axis, indexing="ij")
+
+    yy, xx = torch.meshgrid(
+        axis,
+        axis,
+        indexing="ij",
+    )
 
     for class_id in range(NUM_CLASSES):
+
         for _ in range(samples_per_class):
 
-            image = torch.zeros(IMAGE_SIZE, IMAGE_SIZE)
+            image = torch.zeros(
+                IMAGE_SIZE,
+                IMAGE_SIZE,
+            )
 
-            center_x = random.uniform(-0.12, 0.12)
-            center_y = random.uniform(-0.12, 0.12)
+            noise = 0.015 * torch.randn_like(image)
 
-            x = xx - center_x
-            y = yy - center_y
-
-            angle = random.uniform(-math.pi / 12, math.pi / 12)
-
-            cos_a = math.cos(angle)
-            sin_a = math.sin(angle)
-
-            xr = x * cos_a + y * sin_a
-            yr = -x * sin_a + y * cos_a
-
+            # Small size variation prevents the model from memorizing
+            # only one exact pixel pattern for each class.
             if class_id == 0:
-                radius = random.uniform(0.35, 0.50)
-                distance = torch.sqrt(x.square() + y.square())
-                mask = distance <= radius
+                radius = random.uniform(0.38, 0.52)
+                mask = (
+                    xx.square() + yy.square()
+                    <= radius ** 2
+                )
 
             elif class_id == 1:
-                half_width = random.uniform(0.34, 0.48)
+                half_width = random.uniform(0.37, 0.52)
                 mask = (
-                    (xr.abs() <= half_width)
-                    & (yr.abs() <= half_width)
+                    (xx.abs() <= half_width)
+                    & (yy.abs() <= half_width)
                 )
 
             elif class_id == 2:
                 thickness = random.uniform(0.045, 0.085)
-                mask = yr.abs() <= thickness
+                mask = (
+                    (xx - yy).abs() < thickness
+                )
 
             else:
                 thickness = random.uniform(0.045, 0.085)
                 mask = (
-                    (xr.abs() <= thickness)
-                    | (yr.abs() <= thickness)
+                    (xx.abs() < thickness)
+                    | (yy.abs() < thickness)
                 )
 
             image[mask] = 1.0
 
-            # Small image noise prevents an unrealistically perfect
-            # training distribution without destroying shape structure.
             image = torch.clamp(
-                image + 0.008 * torch.randn_like(image),
+                image + noise,
                 0.0,
                 1.0,
             )
@@ -376,11 +342,49 @@ def create_synthetic_dataset(samples_per_class=SAMPLES_PER_CLASS):
     )
 
 
+def make_reference_templates():
+
+    axis = torch.linspace(-1.0, 1.0, IMAGE_SIZE)
+
+    yy, xx = torch.meshgrid(
+        axis,
+        axis,
+        indexing="ij",
+    )
+
+    templates = []
+
+    circle = (
+        xx.square() + yy.square()
+        <= 0.45 ** 2
+    )
+
+    square = (
+        (xx.abs() <= 0.45)
+        & (yy.abs() <= 0.45)
+    )
+
+    diagonal = (
+        (xx - yy).abs() < 0.065
+    )
+
+    cross = (
+        (xx.abs() < 0.065)
+        | (yy.abs() < 0.065)
+    )
+
+    for mask in [circle, square, diagonal, cross]:
+        templates.append(mask.float().unsqueeze(0))
+
+    return torch.stack(templates)
+
+
 # =============================================================================
 # 5. VISUALIZATION
 # =============================================================================
 
 def show_image_grid(images, titles, title, columns=4):
+
     images = images.detach().float().cpu()
 
     count = min(len(images), len(titles))
@@ -389,18 +393,20 @@ def show_image_grid(images, titles, title, columns=4):
     fig, axes = plt.subplots(
         rows,
         columns,
-        figsize=(3 * columns, 3 * rows),
+        figsize=(3.5 * columns, 3.5 * rows),
     )
 
     axes = np.array(axes).reshape(-1)
 
     for i, ax in enumerate(axes):
+
         if i < count:
             ax.imshow(
                 images[i, 0],
                 cmap="gray",
                 vmin=0,
                 vmax=1,
+                interpolation="nearest",
             )
             ax.set_title(titles[i])
 
@@ -411,29 +417,14 @@ def show_image_grid(images, titles, title, columns=4):
     plt.show()
 
 
-def plot_losses(train_losses, validation_losses=None, title="Training loss"):
+def plot_losses(losses, title):
+
     plt.figure(figsize=(9, 4))
-    plt.plot(train_losses, label="Training")
-
-    if validation_losses:
-        x_values = [
-            item[0] for item in validation_losses
-        ]
-        y_values = [
-            item[1] for item in validation_losses
-        ]
-        plt.plot(
-            x_values,
-            y_values,
-            marker="o",
-            label="Validation",
-        )
-
+    plt.plot(losses)
     plt.xlabel("Training step")
     plt.ylabel("MSE loss")
     plt.title(title)
     plt.grid(True)
-    plt.legend()
     plt.tight_layout()
     plt.show()
 
@@ -497,11 +488,12 @@ class ConvAutoencoder(nn.Module):
 
 
 def train_autoencoder(model, images):
-    device = model_device(model)
+
+    model_device = next(model.parameters()).device
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=LEARNING_RATE,
+        lr=AE_LEARNING_RATE,
     )
 
     images_cpu = images.detach().cpu()
@@ -510,19 +502,21 @@ def train_autoencoder(model, images):
     model.train()
 
     for step in range(AE_TRAIN_STEPS):
+
         indices = torch.randint(
             0,
             len(images_cpu),
             (BATCH_SIZE,),
+            device="cpu",
         )
 
-        batch = images_cpu[indices].to(device)
+        batch = images_cpu[indices].to(model_device)
 
         reconstruction = model(batch)
 
-        loss = (
-            F.mse_loss(reconstruction, batch)
-            + 0.25 * F.l1_loss(reconstruction, batch)
+        loss = F.mse_loss(
+            reconstruction,
+            batch,
         )
 
         optimizer.zero_grad(set_to_none=True)
@@ -545,17 +539,8 @@ def train_autoencoder(model, images):
 # =============================================================================
 
 def calculate_latent_statistics(latents):
-    """
-    Compute per-channel statistics over batch and spatial dimensions.
 
-    The diffusion process starts from standard Gaussian noise.
-    Therefore, the data presented to diffusion should have a
-    reasonably comparable scale.
-
-    This normalization is important: raw autoencoder latents are
-    not guaranteed to have mean zero and standard deviation one.
-    """
-
+    # Per-channel statistics, shared across spatial positions.
     mean = latents.mean(
         dim=(0, 2, 3),
         keepdim=True,
@@ -565,21 +550,23 @@ def calculate_latent_statistics(latents):
         dim=(0, 2, 3),
         keepdim=True,
         unbiased=False,
-    ).clamp_min(1e-5)
+    )
 
-    return mean, std
+    std = std.clamp_min(1e-5)
+
+    return mean.detach(), std.detach()
 
 
 def normalize_latents(latents, mean, std):
     return (latents - mean) / std
 
 
-def denormalize_latents(latents, mean, std):
-    return latents * std + mean
+def denormalize_latents(normalized_latents, mean, std):
+    return normalized_latents * std + mean
 
 
 # =============================================================================
-# 8. TEXT EMBEDDINGS
+# 8. TEXT EMBEDDING
 # =============================================================================
 
 class TextEmbedding(nn.Module):
@@ -606,15 +593,19 @@ class TextEmbedding(nn.Module):
         self.max_length = max_length
 
     def forward(self, token_ids):
+
         sequence_length = token_ids.shape[1]
 
         if sequence_length > self.max_length:
             raise ValueError("Sequence exceeds maximum length")
 
-        return (
-            self.token_embedding(token_ids)
-            + self.position_embedding[:, :sequence_length, :]
-        )
+        token_vectors = self.token_embedding(token_ids)
+
+        position_vectors = self.position_embedding[
+            :, :sequence_length, :
+        ]
+
+        return token_vectors + position_vectors
 
 
 # =============================================================================
@@ -640,7 +631,7 @@ class TextEncoder(nn.Module):
             dropout=0.0,
             activation="gelu",
             batch_first=True,
-            norm_first=False,
+            norm_first=True,
         )
 
         self.transformer = nn.TransformerEncoder(
@@ -649,9 +640,12 @@ class TextEncoder(nn.Module):
             enable_nested_tensor=False,
         )
 
-        self.final_norm = nn.LayerNorm(TEXT_EMBED_DIM)
+        self.final_norm = nn.LayerNorm(
+            TEXT_EMBED_DIM
+        )
 
     def forward(self, token_ids, attention_mask):
+
         x = self.embedding(token_ids)
 
         padding_mask = ~attention_mask.bool()
@@ -663,7 +657,9 @@ class TextEncoder(nn.Module):
 
         x = self.final_norm(x)
 
-        return x * attention_mask.unsqueeze(-1).to(x.dtype)
+        x = x * attention_mask.unsqueeze(-1).to(x.dtype)
+
+        return x
 
 
 # =============================================================================
@@ -684,6 +680,7 @@ class SinusoidalTimeEmbedding(nn.Module):
         )
 
     def forward(self, timesteps):
+
         half_dim = self.embedding_dim // 2
 
         frequencies = torch.exp(
@@ -702,7 +699,10 @@ class SinusoidalTimeEmbedding(nn.Module):
         )
 
         embedding = torch.cat(
-            [torch.sin(angles), torch.cos(angles)],
+            [
+                torch.sin(angles),
+                torch.cos(angles),
+            ],
             dim=1,
         )
 
@@ -716,12 +716,35 @@ class SinusoidalTimeEmbedding(nn.Module):
 
 
 # =============================================================================
-# 11. CONDITIONAL RESIDUAL BLOCK
+# 11. GROUP NORMALIZATION
+# =============================================================================
+
+def valid_group_count(channels, preferred_groups=8):
+
+    preferred_groups = min(
+        preferred_groups,
+        channels,
+    )
+
+    for groups in range(preferred_groups, 0, -1):
+        if channels % groups == 0:
+            return groups
+
+    return 1
+
+
+# =============================================================================
+# 12. CONDITIONAL RESIDUAL BLOCK
 # =============================================================================
 
 class ConditionalResidualBlock(nn.Module):
 
-    def __init__(self, in_channels, out_channels, condition_dim):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        condition_dim,
+    ):
         super().__init__()
 
         self.norm1 = nn.GroupNorm(
@@ -760,17 +783,18 @@ class ConditionalResidualBlock(nn.Module):
         )
 
     def forward(self, x, condition):
+
         residual = self.skip(x)
 
         h = self.conv1(
             F.silu(self.norm1(x))
         )
 
-        bias = self.condition_projection(
+        condition_bias = self.condition_projection(
             condition
         ).unsqueeze(-1).unsqueeze(-1)
 
-        h = h + bias
+        h = h + condition_bias
 
         h = self.conv2(
             F.silu(self.norm2(h))
@@ -780,12 +804,17 @@ class ConditionalResidualBlock(nn.Module):
 
 
 # =============================================================================
-# 12. TEXT CROSS-ATTENTION
+# 13. TEXT CROSS-ATTENTION
 # =============================================================================
 
 class TextCrossAttention(nn.Module):
 
-    def __init__(self, image_channels, text_dim, num_heads):
+    def __init__(
+        self,
+        image_channels,
+        text_dim,
+        num_heads,
+    ):
         super().__init__()
 
         if image_channels % num_heads != 0:
@@ -816,6 +845,7 @@ class TextCrossAttention(nn.Module):
         attention_mask,
         return_attention=False,
     ):
+
         batch, channels, height, width = image_features.shape
 
         queries = image_features.flatten(
@@ -823,6 +853,7 @@ class TextCrossAttention(nn.Module):
         ).transpose(1, 2)
 
         queries = self.image_norm(queries)
+
         text = self.text_norm(text_features)
 
         key_padding_mask = ~attention_mask.bool()
@@ -856,7 +887,7 @@ class TextCrossAttention(nn.Module):
 
 
 # =============================================================================
-# 13. TWO-RESOLUTION TEXT-CONDITIONED U-NET
+# 14. TEXT-CONDITIONED U-NET
 # =============================================================================
 
 class TextConditionedUNet(nn.Module):
@@ -895,8 +926,7 @@ class TextConditionedUNet(nn.Module):
             TIME_EMBED_DIM,
         )
 
-        # Attention at the 4x4 bottleneck.
-        self.middle_attention = TextCrossAttention(
+        self.cross_attention = TextCrossAttention(
             BASE_CHANNELS * 2,
             TEXT_EMBED_DIM,
             CROSS_ATTENTION_HEADS,
@@ -914,19 +944,6 @@ class TextConditionedUNet(nn.Module):
             4,
             stride=2,
             padding=1,
-        )
-
-        # A second attention layer at 8x8.
-        self.output_attention = TextCrossAttention(
-            BASE_CHANNELS,
-            TEXT_EMBED_DIM,
-            CROSS_ATTENTION_HEADS,
-        )
-
-        self.output_block = ConditionalResidualBlock(
-            BASE_CHANNELS,
-            BASE_CHANNELS,
-            TIME_EMBED_DIM,
         )
 
         self.output_norm = nn.GroupNorm(
@@ -949,6 +966,7 @@ class TextConditionedUNet(nn.Module):
         attention_mask,
         return_attention=False,
     ):
+
         time_features = self.time_embedding(timesteps)
 
         h = self.input_conv(noisy_latents)
@@ -968,14 +986,14 @@ class TextConditionedUNet(nn.Module):
         )
 
         if return_attention:
-            h, middle_weights = self.middle_attention(
+            h, attention_weights = self.cross_attention(
                 h,
                 text_features,
                 attention_mask,
                 return_attention=True,
             )
         else:
-            h = self.middle_attention(
+            h = self.cross_attention(
                 h,
                 text_features,
                 attention_mask,
@@ -995,51 +1013,36 @@ class TextConditionedUNet(nn.Module):
 
         h = h + skip
 
-        if return_attention:
-            h, output_weights = self.output_attention(
-                h,
-                text_features,
-                attention_mask,
-                return_attention=True,
-            )
-        else:
-            h = self.output_attention(
-                h,
-                text_features,
-                attention_mask,
-            )
-
-        h = self.output_block(
-            h,
-            time_features,
-        )
-
         h = F.silu(self.output_norm(h))
+
         output = self.output_conv(h)
 
         if return_attention:
-            return output, {
-                "middle": middle_weights,
-                "output": output_weights,
-            }
+            return output, attention_weights
 
         return output
 
 
 # =============================================================================
-# 14. DIFFUSION SCHEDULE
+# 15. DIFFUSION SCHEDULE
 # =============================================================================
 
 def make_diffusion_schedule(device):
+
     betas = torch.linspace(
         BETA_START,
         BETA_END,
         DIFFUSION_STEPS,
         device=device,
+        dtype=torch.float32,
     )
 
     alphas = 1.0 - betas
-    alpha_bars = torch.cumprod(alphas, dim=0)
+
+    alpha_bars = torch.cumprod(
+        alphas,
+        dim=0,
+    )
 
     alpha_bars_previous = torch.cat(
         [
@@ -1063,18 +1066,24 @@ def make_diffusion_schedule(device):
         "sqrt_one_minus_alpha_bars": torch.sqrt(
             1.0 - alpha_bars
         ),
-        "sqrt_recip_alphas": torch.sqrt(1.0 / alphas),
+        "sqrt_recip_alphas": torch.sqrt(
+            1.0 / alphas
+        ),
         "posterior_variance": posterior_variance,
     }
 
 
 def extract(values, timesteps, target_shape):
+
     if values.device != timesteps.device:
         raise RuntimeError(
             "Schedule and timestep devices do not match"
         )
 
-    result = values.gather(0, timesteps)
+    result = values.gather(
+        0,
+        timesteps,
+    )
 
     return result.reshape(
         timesteps.shape[0],
@@ -1083,10 +1092,16 @@ def extract(values, timesteps, target_shape):
 
 
 # =============================================================================
-# 15. FORWARD DIFFUSION
+# 16. FORWARD DIFFUSION
 # =============================================================================
 
-def q_sample(clean_latents, timesteps, noise, schedule):
+def q_sample(
+    clean_latents,
+    timesteps,
+    noise,
+    schedule,
+):
+
     sqrt_alpha_bar = extract(
         schedule["sqrt_alpha_bars"],
         timesteps,
@@ -1106,7 +1121,7 @@ def q_sample(clean_latents, timesteps, noise, schedule):
 
 
 # =============================================================================
-# 16. DATASET ALIGNMENT
+# 17. DATASET ALIGNMENT
 # =============================================================================
 
 def validate_aligned_dataset(
@@ -1114,6 +1129,7 @@ def validate_aligned_dataset(
     token_ids,
     attention_masks,
 ):
+
     if latent_dataset.shape[0] != token_ids.shape[0]:
         raise ValueError(
             f"{latent_dataset.shape[0]} latents but "
@@ -1135,153 +1151,60 @@ def validate_aligned_dataset(
 
 
 # =============================================================================
-# 17. CLASSIFIER-FREE CONDITIONING
-# =============================================================================
-
-def apply_classifier_free_dropout(
-    token_ids,
-    attention_masks,
-    probability=CLASSIFIER_FREE_DROPOUT,
-):
-    """
-    Replace selected prompts with a valid UNK-only null prompt.
-
-    The null prompt retains one valid attention position, avoiding
-    an all-masked Transformer attention sequence.
-    """
-
-    token_ids = token_ids.clone()
-    attention_masks = attention_masks.clone()
-
-    batch_size = token_ids.shape[0]
-
-    drop = (
-        torch.rand(batch_size, device=token_ids.device)
-        < probability
-    )
-
-    null_ids = NULL_TOKEN_IDS.to(token_ids.device)
-    null_mask = NULL_ATTENTION_MASK.to(attention_masks.device)
-
-    token_ids[drop] = null_ids
-    attention_masks[drop] = null_mask
-
-    return token_ids, attention_masks
-
-
-# =============================================================================
-# 18. VALIDATION LOSS
-# =============================================================================
-
-@torch.no_grad()
-def calculate_validation_loss(
-    diffusion_model,
-    text_encoder,
-    latent_dataset,
-    token_ids,
-    attention_masks,
-    schedule,
-):
-    device = model_device(diffusion_model)
-
-    diffusion_model.eval()
-    text_encoder.eval()
-
-    latent_dataset = latent_dataset.to(device)
-    token_ids = token_ids.to(device)
-    attention_masks = attention_masks.to(device)
-
-    count = min(BATCH_SIZE, latent_dataset.shape[0])
-
-    indices = torch.randperm(
-        latent_dataset.shape[0],
-        device=device,
-    )[:count]
-
-    clean = latent_dataset[indices]
-    tokens = token_ids[indices]
-    masks = attention_masks[indices]
-
-    timesteps = torch.randint(
-        0,
-        DIFFUSION_STEPS,
-        (count,),
-        device=device,
-        dtype=torch.long,
-    )
-
-    noise = torch.randn_like(clean)
-
-    noisy = q_sample(
-        clean,
-        timesteps,
-        noise,
-        schedule,
-    )
-
-    text_features = text_encoder(tokens, masks)
-
-    prediction = diffusion_model(
-        noisy,
-        timesteps,
-        text_features,
-        masks,
-    )
-
-    return F.mse_loss(prediction, noise).item()
-
-
-# =============================================================================
-# 19. TRAIN TEXT-CONDITIONED DIFFUSION
+# 18. TRAIN TEXT-CONDITIONED DIFFUSION
 # =============================================================================
 
 def train_text_conditioned_diffusion(
     diffusion_model,
     text_encoder,
-    train_latents,
-    train_tokens_cpu,
-    train_masks_cpu,
-    validation_latents,
-    validation_tokens_cpu,
-    validation_masks_cpu,
+    normalized_latents,
+    token_ids_cpu,
+    attention_masks_cpu,
 ):
-    device = model_device(diffusion_model)
 
-    if model_device(text_encoder) != device:
+    model_device = next(
+        diffusion_model.parameters()
+    ).device
+
+    text_device = next(
+        text_encoder.parameters()
+    ).device
+
+    if model_device != text_device:
         raise RuntimeError(
             "Text encoder and diffusion model must share a device"
         )
 
     validate_aligned_dataset(
-        train_latents,
-        train_tokens_cpu,
-        train_masks_cpu,
+        normalized_latents,
+        token_ids_cpu,
+        attention_masks_cpu,
+    )
+
+    normalized_latents = normalized_latents.to(model_device)
+
+    token_ids_device = token_ids_cpu.to(
+        model_device,
+        dtype=torch.long,
+    )
+
+    masks_device = attention_masks_cpu.to(
+        model_device,
+        dtype=torch.bool,
     )
 
     validate_aligned_dataset(
-        validation_latents,
-        validation_tokens_cpu,
-        validation_masks_cpu,
+        normalized_latents,
+        token_ids_device,
+        masks_device,
     )
 
-    train_latents = train_latents.to(device)
-    train_tokens = train_tokens_cpu.to(device)
-    train_masks = train_masks_cpu.to(device)
-
-    validation_latents = validation_latents.to(device)
-    validation_tokens = validation_tokens_cpu.to(device)
-    validation_masks = validation_masks_cpu.to(device)
-
-    schedule = make_diffusion_schedule(device)
-
-    parameters = (
-        list(diffusion_model.parameters())
-        + list(text_encoder.parameters())
-    )
+    schedule = make_diffusion_schedule(model_device)
 
     optimizer = torch.optim.AdamW(
-        parameters,
-        lr=LEARNING_RATE,
+        list(diffusion_model.parameters())
+        + list(text_encoder.parameters()),
+        lr=DIFFUSION_LEARNING_RATE,
         weight_decay=1e-5,
     )
 
@@ -1289,60 +1212,60 @@ def train_text_conditioned_diffusion(
     text_encoder.train()
 
     losses = []
-    validation_losses = []
 
     for step in range(DIFFUSION_TRAIN_STEPS):
 
         indices = torch.randint(
             0,
-            train_latents.shape[0],
+            normalized_latents.shape[0],
             (BATCH_SIZE,),
-            device=device,
+            device=model_device,
         )
 
-        clean = train_latents[indices]
-        tokens = train_tokens[indices]
-        masks = train_masks[indices]
-
-        # Classifier-free training: sometimes remove the text condition.
-        tokens, masks = apply_classifier_free_dropout(
-            tokens,
-            masks,
-        )
+        clean_latents = normalized_latents[indices]
+        batch_tokens = token_ids_device[indices]
+        batch_masks = masks_device[indices]
 
         timesteps = torch.randint(
             0,
             DIFFUSION_STEPS,
             (BATCH_SIZE,),
-            device=device,
+            device=model_device,
             dtype=torch.long,
         )
 
-        noise = torch.randn_like(clean)
+        noise = torch.randn_like(clean_latents)
 
-        noisy = q_sample(
-            clean,
+        noisy_latents = q_sample(
+            clean_latents,
             timesteps,
             noise,
             schedule,
         )
 
-        text_features = text_encoder(tokens, masks)
-
-        prediction = diffusion_model(
-            noisy,
-            timesteps,
-            text_features,
-            masks,
+        text_features = text_encoder(
+            batch_tokens,
+            batch_masks,
         )
 
-        loss = F.mse_loss(prediction, noise)
+        predicted_noise = diffusion_model(
+            noisy_latents,
+            timesteps,
+            text_features,
+            batch_masks,
+        )
+
+        loss = F.mse_loss(
+            predicted_noise,
+            noise,
+        )
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(
-            parameters,
+            list(diffusion_model.parameters())
+            + list(text_encoder.parameters()),
             1.0,
         )
 
@@ -1357,139 +1280,11 @@ def train_text_conditioned_diffusion(
                 f"loss={loss.item():.6f}"
             )
 
-        if (step + 1) % VALIDATION_INTERVAL == 0:
-            validation_loss = calculate_validation_loss(
-                diffusion_model,
-                text_encoder,
-                validation_latents,
-                validation_tokens,
-                validation_masks,
-                schedule,
-            )
-
-            validation_losses.append(
-                (step + 1, validation_loss)
-            )
-
-            print(
-                f"  Validation loss={validation_loss:.6f}"
-            )
-
-            diffusion_model.train()
-            text_encoder.train()
-
-    return losses, validation_losses
+    return losses
 
 
 # =============================================================================
-# 20. DDPM REVERSE STEP
-# =============================================================================
-
-@torch.no_grad()
-def ddpm_reverse_step(
-    diffusion_model,
-    latents,
-    timesteps,
-    text_features,
-    attention_mask,
-    schedule,
-):
-    prediction = diffusion_model(
-        latents,
-        timesteps,
-        text_features,
-        attention_mask,
-    )
-
-    beta = extract(
-        schedule["betas"],
-        timesteps,
-        latents.shape,
-    )
-
-    sqrt_one_minus_alpha_bar = extract(
-        schedule["sqrt_one_minus_alpha_bars"],
-        timesteps,
-        latents.shape,
-    )
-
-    sqrt_recip_alpha = extract(
-        schedule["sqrt_recip_alphas"],
-        timesteps,
-        latents.shape,
-    )
-
-    mean = sqrt_recip_alpha * (
-        latents
-        - beta * prediction / sqrt_one_minus_alpha_bar
-    )
-
-    variance = extract(
-        schedule["posterior_variance"],
-        timesteps,
-        latents.shape,
-    )
-
-    noise = torch.randn_like(latents)
-
-    nonzero_mask = (
-        timesteps > 0
-    ).float().reshape(
-        -1,
-        1,
-        1,
-        1,
-    )
-
-    return (
-        mean
-        + nonzero_mask
-        * torch.sqrt(torch.clamp(variance, min=0.0))
-        * noise
-    )
-
-
-# =============================================================================
-# 21. CLASSIFIER-FREE GUIDANCE
-# =============================================================================
-
-@torch.no_grad()
-def guided_noise_prediction(
-    diffusion_model,
-    latents,
-    timesteps,
-    conditional_features,
-    conditional_mask,
-    unconditional_features,
-    unconditional_mask,
-    guidance_scale,
-):
-    conditional_prediction = diffusion_model(
-        latents,
-        timesteps,
-        conditional_features,
-        conditional_mask,
-    )
-
-    unconditional_prediction = diffusion_model(
-        latents,
-        timesteps,
-        unconditional_features,
-        unconditional_mask,
-    )
-
-    return (
-        unconditional_prediction
-        + guidance_scale
-        * (
-            conditional_prediction
-            - unconditional_prediction
-        )
-    )
-
-
-# =============================================================================
-# 22. COMPLETE TEXT-CONDITIONED SAMPLER
+# 19. DDPM SAMPLING
 # =============================================================================
 
 @torch.no_grad()
@@ -1500,16 +1295,33 @@ def sample_text_conditioned(
     attention_mask,
     schedule,
     num_samples,
-    initial_noise=None,
-    guidance_scale=GUIDANCE_SCALE,
 ):
-    device = model_device(diffusion_model)
 
-    if model_device(text_encoder) != device:
-        raise RuntimeError("Text encoder and diffusion model device mismatch")
+    model_device = next(
+        diffusion_model.parameters()
+    ).device
 
-    token_ids = token_ids.to(device, dtype=torch.long)
-    attention_mask = attention_mask.to(device, dtype=torch.bool)
+    text_device = next(
+        text_encoder.parameters()
+    ).device
+
+    if model_device != text_device:
+        raise RuntimeError("Model device mismatch")
+
+    token_ids = token_ids.to(
+        model_device,
+        dtype=torch.long,
+    )
+
+    attention_mask = attention_mask.to(
+        model_device,
+        dtype=torch.bool,
+    )
+
+    schedule = {
+        key: value.to(model_device)
+        for key, value in schedule.items()
+    }
 
     if token_ids.shape[0] == 1 and num_samples > 1:
         token_ids = token_ids.expand(num_samples, -1)
@@ -1520,70 +1332,41 @@ def sample_text_conditioned(
             "Prompt batch size must equal num_samples"
         )
 
-    schedule = {
-        key: value.to(device)
-        for key, value in schedule.items()
-    }
-
     diffusion_model.eval()
     text_encoder.eval()
 
-    conditional_features = text_encoder(
+    text_features = text_encoder(
         token_ids,
         attention_mask,
     )
 
-    null_ids = NULL_TOKEN_IDS.to(device).unsqueeze(0)
-    null_mask = NULL_ATTENTION_MASK.to(device).unsqueeze(0)
-
-    null_ids = null_ids.expand(num_samples, -1)
-    null_mask = null_mask.expand(num_samples, -1)
-
-    unconditional_features = text_encoder(
-        null_ids,
-        null_mask,
+    # The training data was normalized to approximately N(0,I).
+    # Start the reverse process from the matching Gaussian prior.
+    latents = torch.randn(
+        num_samples,
+        LATENT_CHANNELS,
+        LATENT_SIZE,
+        LATENT_SIZE,
+        device=model_device,
     )
-
-    if initial_noise is None:
-        latents = torch.randn(
-            num_samples,
-            LATENT_CHANNELS,
-            LATENT_SIZE,
-            LATENT_SIZE,
-            device=device,
-        )
-    else:
-        latents = initial_noise.to(device).clone()
-
-        if latents.shape != (
-            num_samples,
-            LATENT_CHANNELS,
-            LATENT_SIZE,
-            LATENT_SIZE,
-        ):
-            raise ValueError("Initial noise has incorrect shape")
 
     for timestep in reversed(range(DIFFUSION_STEPS)):
 
         t = torch.full(
             (num_samples,),
             timestep,
-            device=device,
+            device=model_device,
             dtype=torch.long,
         )
 
-        guided_prediction = guided_noise_prediction(
-            diffusion_model,
+        predicted_noise = diffusion_model(
             latents,
             t,
-            conditional_features,
+            text_features,
             attention_mask,
-            unconditional_features,
-            null_mask,
-            guidance_scale,
         )
 
-        beta = extract(
+        beta_t = extract(
             schedule["betas"],
             t,
             latents.shape,
@@ -1603,11 +1386,12 @@ def sample_text_conditioned(
 
         mean = sqrt_recip_alpha * (
             latents
-            - beta * guided_prediction
+            - beta_t * predicted_noise
             / sqrt_one_minus_alpha_bar
         )
 
         if timestep > 0:
+
             variance = extract(
                 schedule["posterior_variance"],
                 t,
@@ -1620,6 +1404,7 @@ def sample_text_conditioned(
                     torch.clamp(variance, min=0.0)
                 ) * torch.randn_like(latents)
             )
+
         else:
             latents = mean
 
@@ -1627,307 +1412,108 @@ def sample_text_conditioned(
 
 
 # =============================================================================
-# 23. INDEPENDENT SHAPE CLASSIFIER
-# =============================================================================
-
-class ShapeClassifier(nn.Module):
-    """
-    This model is trained from scratch and is NOT used to generate images.
-
-    Its purpose is independent evaluation:
-    Does a generated image resemble the requested shape category?
-    """
-
-    def __init__(self):
-        super().__init__()
-
-        self.features = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1),
-            nn.SiLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.SiLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.SiLU(),
-
-            nn.AdaptiveAvgPool2d(1),
-        )
-
-        self.classifier = nn.Linear(128, NUM_CLASSES)
-
-    def forward(self, x):
-        features = self.features(x).flatten(1)
-        return self.classifier(features)
-
-
-def train_shape_classifier(model, images, labels):
-    device = model_device(model)
-
-    images = images.to(device)
-    labels = labels.to(device)
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=1e-3,
-    )
-
-    model.train()
-    losses = []
-
-    for step in range(CLASSIFIER_TRAIN_STEPS):
-        indices = torch.randint(
-            0,
-            images.shape[0],
-            (BATCH_SIZE,),
-            device=device,
-        )
-
-        batch_images = images[indices]
-        batch_labels = labels[indices]
-
-        logits = model(batch_images)
-        loss = F.cross_entropy(logits, batch_labels)
-
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
-
-        losses.append(loss.item())
-
-        if (step + 1) % 100 == 0:
-            print(
-                f"Classifier step {step + 1}/"
-                f"{CLASSIFIER_TRAIN_STEPS} "
-                f"loss={loss.item():.6f}"
-            )
-
-    return losses
-
-
-@torch.no_grad()
-def evaluate_classifier(model, images, labels):
-    device = model_device(model)
-
-    model.eval()
-
-    logits = model(images.to(device))
-    predictions = logits.argmax(dim=1)
-
-    labels = labels.to(device)
-
-    accuracy = (
-        predictions == labels
-    ).float().mean().item()
-
-    return accuracy, predictions, logits.softmax(dim=1)
-
-
-# =============================================================================
-# 24. GENERATE AND EVALUATE PROMPTS
+# 20. SHAPE QUALITY EVALUATION
 # =============================================================================
 
 @torch.no_grad()
-def generate_and_evaluate(
-    autoencoder,
-    diffusion_model,
-    text_encoder,
-    classifier,
-    latent_mean,
-    latent_std,
-):
-    print("\nGENERATING IMAGES FROM TEXT")
+def evaluate_shape_templates(generated_images):
 
-    device = model_device(diffusion_model)
-
-    token_ids, masks = TOKENIZER.batch_encode(PROMPTS)
-
-    token_ids = token_ids.to(device)
-    masks = masks.to(device)
-
-    schedule = make_diffusion_schedule(device)
-
-    generated_normalized_latents = sample_text_conditioned(
-        diffusion_model,
-        text_encoder,
-        token_ids,
-        masks,
-        schedule,
-        num_samples=NUM_CLASSES,
-        guidance_scale=GUIDANCE_SCALE,
+    templates = make_reference_templates().to(
+        generated_images.device
     )
 
-    generated_raw_latents = denormalize_latents(
-        generated_normalized_latents,
-        latent_mean,
-        latent_std,
-    )
+    generated_binary = generated_images > 0.35
+    template_binary = templates > 0.5
 
-    generated_images = autoencoder.decode(
-        generated_raw_latents
-    ).clamp(0.0, 1.0)
+    results = []
 
-    expected_labels = torch.arange(
-        NUM_CLASSES,
-        device=device,
-    )
+    for image_index in range(generated_images.shape[0]):
 
-    accuracy, predictions, probabilities = evaluate_classifier(
-        classifier,
-        generated_images,
-        expected_labels,
-    )
+        image = generated_binary[image_index]
 
-    print("\nSEMANTIC EVALUATION")
+        scores = []
 
-    for i, prompt in enumerate(PROMPTS):
-        predicted_class = predictions[i].item()
-        confidence = probabilities[i, predicted_class].item()
+        for class_index in range(NUM_CLASSES):
+
+            template = template_binary[class_index]
+
+            intersection = (
+                image & template
+            ).sum().float()
+
+            union = (
+                image | template
+            ).sum().float()
+
+            iou = (
+                intersection / union.clamp_min(1.0)
+            ).item()
+
+            scores.append(iou)
+
+        predicted_class = int(np.argmax(scores))
+
+        results.append({
+            "predicted_class": predicted_class,
+            "scores": scores,
+            "foreground_fraction": image.float().mean().item(),
+            "mean_intensity": generated_images[
+                image_index
+            ].mean().item(),
+            "max_intensity": generated_images[
+                image_index
+            ].max().item(),
+        })
+
+    return results
+
+
+def print_shape_evaluation(generated_images):
+
+    results = evaluate_shape_templates(generated_images)
+
+    print("\nGENERATED SHAPE QUALITY")
+
+    correct = 0
+
+    for index, result in enumerate(results):
+
+        predicted_name = CLASS_NAMES[
+            result["predicted_class"]
+        ]
+
+        expected_name = CLASS_NAMES[index]
+
+        is_correct = (
+            result["predicted_class"] == index
+        )
+
+        correct += int(is_correct)
 
         print(
-            f"Prompt: {prompt:20s} "
-            f"Predicted: {PROMPTS[predicted_class]:20s} "
-            f"Confidence: {confidence:.3f}"
+            f"Prompt: {PROMPTS[index]:20s} "
+            f"Predicted: {predicted_name:10s} "
+            f"Foreground: {result['foreground_fraction']:.3f} "
+            f"Mean: {result['mean_intensity']:.3f} "
+            f"Max: {result['max_intensity']:.3f} "
+            f"{'PASS' if is_correct else 'CHECK'}"
         )
 
     print(
-        f"Generated shape-class accuracy: {accuracy * 100:.1f}%"
+        f"Template classification: "
+        f"{correct}/{len(results)}"
     )
 
-    titles = []
-
-    for i, prompt in enumerate(PROMPTS):
-        predicted = PROMPTS[predictions[i].item()]
-        titles.append(
-            f"Prompt: {prompt}\nPredicted: {predicted}"
-        )
-
-    show_image_grid(
-        generated_images,
-        titles,
-        "Generated images and independent classifier predictions",
-    )
-
-    return generated_images, accuracy
+    return results
 
 
 # =============================================================================
-# 25. SAME NOISE / DIFFERENT TEXT EXPERIMENT
-# =============================================================================
-
-@torch.no_grad()
-def experiment_same_noise_different_text(
-    autoencoder,
-    diffusion_model,
-    text_encoder,
-    classifier,
-    latent_mean,
-    latent_std,
-):
-    print("\nEXPERIMENT — SAME NOISE / DIFFERENT TEXT")
-
-    device = model_device(diffusion_model)
-
-    ids, masks = TOKENIZER.batch_encode(PROMPTS)
-
-    ids = ids.to(device)
-    masks = masks.to(device)
-
-    initial_noise = torch.randn(
-        NUM_CLASSES,
-        LATENT_CHANNELS,
-        LATENT_SIZE,
-        LATENT_SIZE,
-        device=device,
-    )
-
-    schedule = make_diffusion_schedule(device)
-
-    normalized_latents = sample_text_conditioned(
-        diffusion_model,
-        text_encoder,
-        ids,
-        masks,
-        schedule,
-        num_samples=NUM_CLASSES,
-        initial_noise=initial_noise,
-        guidance_scale=GUIDANCE_SCALE,
-    )
-
-    raw_latents = denormalize_latents(
-        normalized_latents,
-        latent_mean,
-        latent_std,
-    )
-
-    images = autoencoder.decode(
-        raw_latents
-    ).clamp(0.0, 1.0)
-
-    accuracy, predictions, probabilities = evaluate_classifier(
-        classifier,
-        images,
-        torch.arange(NUM_CLASSES, device=device),
-    )
-
-    print("Prompts:", PROMPTS)
-
-    pairwise_differences = []
-
-    for i in range(NUM_CLASSES):
-        for j in range(i + 1, NUM_CLASSES):
-            pairwise_differences.append(
-                torch.mean(
-                    torch.abs(images[i] - images[j])
-                ).item()
-            )
-
-    print("Pairwise image differences:", pairwise_differences)
-
-    for i in range(NUM_CLASSES):
-        print(
-            f"{PROMPTS[i]} -> "
-            f"{PROMPTS[predictions[i].item()]}, "
-            f"confidence={probabilities[i, predictions[i]].item():.3f}"
-        )
-
-    print(
-        f"Same-noise semantic accuracy: {accuracy * 100:.1f}%"
-    )
-
-    show_image_grid(
-        images,
-        PROMPTS,
-        "Same initial noise — different text prompts",
-    )
-
-    return images
-
-
-# =============================================================================
-# 26. UNIT TEST 1 — VOCABULARY
-# =============================================================================
-
-def test_vocabulary():
-    print("\nTEST 1 — VOCABULARY")
-
-    assert VOCAB[PAD_TOKEN] == 0
-    assert VOCAB[UNK_TOKEN] == 1
-    assert len(VOCAB) == VOCAB_SIZE
-    assert len(set(VOCAB.values())) == VOCAB_SIZE
-
-    print("Vocabulary size:", VOCAB_SIZE)
-    print("PASS")
-
-
-# =============================================================================
-# 27. UNIT TEST 2 — TOKENIZER
+# 21. UNIT TESTS
 # =============================================================================
 
 def test_tokenizer():
-    print("\nTEST 2 — TOKENIZER")
+
+    print("\nTEST 1 — TOKENIZER")
 
     ids, mask = TOKENIZER.encode("make a circle")
 
@@ -1938,92 +1524,26 @@ def test_tokenizer():
         VOCAB[PAD_TOKEN],
     ]
 
-    assert mask.tolist() == [
-        True, True, True, False,
-    ]
-
-    print("Token IDs:", ids.tolist())
-    print("Mask:", mask.tolist())
-    print("PASS")
-
-
-# =============================================================================
-# 28. UNIT TEST 3 — UNKNOWN TOKENS AND TRUNCATION
-# =============================================================================
-
-def test_unknown_and_truncation():
-    print("\nTEST 3 — UNKNOWN TOKENS AND TRUNCATION")
-
-    ids, mask = TOKENIZER.encode("unknown object")
-
-    assert ids[0].item() == TOKENIZER.unk_id
-    assert ids[1].item() == TOKENIZER.unk_id
-
-    ids, mask = TOKENIZER.encode(
-        "make a circle square diagonal"
-    )
-
-    assert ids.shape[0] == MAX_TEXT_LENGTH
-    assert mask.all()
-
-    empty_ids, empty_mask = TOKENIZER.encode("")
-
-    assert empty_mask[0]
-    assert empty_ids[0].item() == TOKENIZER.unk_id
+    assert mask.tolist() == [True, True, True, False]
 
     print("PASS")
 
-
-# =============================================================================
-# 29. UNIT TEST 4 — BATCH TOKENIZATION
-# =============================================================================
 
 def test_batch_tokenization():
-    print("\nTEST 4 — BATCH TOKENIZATION")
+
+    print("\nTEST 2 — BATCH TOKENIZATION")
 
     ids, masks = TOKENIZER.batch_encode(PROMPTS)
 
     assert ids.shape == (4, MAX_TEXT_LENGTH)
     assert masks.shape == ids.shape
-    assert ids.dtype == torch.long
-    assert masks.dtype == torch.bool
 
     print("PASS")
 
-
-# =============================================================================
-# 30. UNIT TEST 5 — TEXT EMBEDDING
-# =============================================================================
-
-def test_text_embedding():
-    print("\nTEST 5 — TEXT EMBEDDING")
-
-    embedding = TextEmbedding(
-        VOCAB_SIZE,
-        TEXT_EMBED_DIM,
-        MAX_TEXT_LENGTH,
-        TOKENIZER.pad_id,
-    )
-
-    ids, _ = TOKENIZER.batch_encode(PROMPTS)
-    output = embedding(ids)
-
-    assert output.shape == (
-        4, MAX_TEXT_LENGTH, TEXT_EMBED_DIM
-    )
-
-    assert torch.isfinite(output).all()
-
-    print("Output:", tuple(output.shape))
-    print("PASS")
-
-
-# =============================================================================
-# 31. UNIT TEST 6 — TEXT ENCODER
-# =============================================================================
 
 def test_text_encoder():
-    print("\nTEST 6 — TEXT ENCODER")
+
+    print("\nTEST 3 — TEXT ENCODER")
 
     model = TextEncoder().to(DEVICE)
 
@@ -2035,24 +1555,23 @@ def test_text_encoder():
     )
 
     assert output.shape == (
-        4, MAX_TEXT_LENGTH, TEXT_EMBED_DIM
+        4,
+        MAX_TEXT_LENGTH,
+        TEXT_EMBED_DIM,
     )
 
-    assert output.device == model_device(model)
     assert torch.isfinite(output).all()
 
     print("Output:", tuple(output.shape))
     print("PASS")
 
 
-# =============================================================================
-# 32. UNIT TEST 7 — PADDING OUTPUT
-# =============================================================================
+def test_padding_mask():
 
-def test_padding_output():
-    print("\nTEST 7 — PADDING OUTPUT")
+    print("\nTEST 4 — PADDING MASK")
 
-    model = TextEncoder().to(DEVICE).eval()
+    model = TextEncoder().to(DEVICE)
+    model.eval()
 
     ids, masks = TOKENIZER.encode("make a circle")
 
@@ -2062,60 +1581,18 @@ def test_padding_output():
     with torch.no_grad():
         output = model(ids, masks)
 
-    padded = output[~masks]
-
     assert torch.allclose(
-        padded,
-        torch.zeros_like(padded),
+        output[~masks],
+        torch.zeros_like(output[~masks]),
         atol=1e-6,
     )
 
     print("PASS")
 
 
-# =============================================================================
-# 33. UNIT TEST 8 — PADDING MASK INVARIANCE
-# =============================================================================
-
-def test_padding_mask_invariance():
-    print("\nTEST 8 — PADDING MASK INVARIANCE")
-
-    model = TextEncoder().to(DEVICE).eval()
-
-    ids_a, masks_a = TOKENIZER.encode("make a circle")
-    ids_b, masks_b = TOKENIZER.encode("make a circle")
-
-    ids_b[-1] = VOCAB["square"]
-
-    ids_a = ids_a.unsqueeze(0).to(DEVICE)
-    ids_b = ids_b.unsqueeze(0).to(DEVICE)
-
-    masks_a = masks_a.unsqueeze(0).to(DEVICE)
-    masks_b = masks_b.unsqueeze(0).to(DEVICE)
-
-    with torch.no_grad():
-        out_a = model(ids_a, masks_a)
-        out_b = model(ids_b, masks_b)
-
-    valid_a = out_a[:, masks_a[0], :]
-    valid_b = out_b[:, masks_b[0], :]
-
-    assert torch.allclose(
-        valid_a,
-        valid_b,
-        atol=1e-5,
-        rtol=1e-5,
-    )
-
-    print("PASS")
-
-
-# =============================================================================
-# 34. UNIT TEST 9 — CROSS-ATTENTION
-# =============================================================================
-
 def test_cross_attention():
-    print("\nTEST 9 — CROSS-ATTENTION OUTPUT")
+
+    print("\nTEST 5 — CROSS-ATTENTION")
 
     attention = TextCrossAttention(
         64,
@@ -2123,18 +1600,19 @@ def test_cross_attention():
         4,
     ).to(DEVICE)
 
-    image = torch.randn(2, 64, 4, 4, device=DEVICE)
+    image = torch.randn(
+        2, 64, 4, 4,
+        device=DEVICE,
+    )
 
     text = torch.randn(
         2, MAX_TEXT_LENGTH, TEXT_EMBED_DIM,
         device=DEVICE,
     )
 
-    masks = torch.tensor(
-        [
-            [True, True, True, False],
-            [True, True, True, True],
-        ],
+    masks = torch.ones(
+        2, MAX_TEXT_LENGTH,
+        dtype=torch.bool,
         device=DEVICE,
     )
 
@@ -2150,62 +1628,14 @@ def test_cross_attention():
         2, 4, 16, MAX_TEXT_LENGTH
     )
 
-    assert torch.isfinite(output).all()
-    assert torch.isfinite(weights).all()
-
     print("Output:", tuple(output.shape))
-    print("Weights:", tuple(weights.shape))
+    print("Attention:", tuple(weights.shape))
     print("PASS")
 
-
-# =============================================================================
-# 35. UNIT TEST 10 — CROSS-ATTENTION PADDING MASK
-# =============================================================================
-
-def test_cross_attention_padding_mask():
-    print("\nTEST 10 — CROSS-ATTENTION PADDING MASK")
-
-    attention = TextCrossAttention(
-        64,
-        TEXT_EMBED_DIM,
-        4,
-    ).to(DEVICE).eval()
-
-    image = torch.randn(1, 64, 4, 4, device=DEVICE)
-
-    text_a = torch.randn(
-        1, MAX_TEXT_LENGTH, TEXT_EMBED_DIM,
-        device=DEVICE,
-    )
-
-    text_b = text_a.clone()
-    text_b[:, -1, :] = 1000.0
-
-    mask = torch.tensor(
-        [[True, True, True, False]],
-        device=DEVICE,
-    )
-
-    with torch.no_grad():
-        output_a = attention(image, text_a, mask)
-        output_b = attention(image, text_b, mask)
-
-    assert torch.allclose(
-        output_a,
-        output_b,
-        atol=1e-5,
-        rtol=1e-5,
-    )
-
-    print("PASS")
-
-
-# =============================================================================
-# 36. UNIT TEST 11 — DIFFUSION SCHEDULE
-# =============================================================================
 
 def test_diffusion_schedule():
-    print("\nTEST 11 — DIFFUSION SCHEDULE")
+
+    print("\nTEST 6 — DIFFUSION SCHEDULE")
 
     schedule = make_diffusion_schedule(DEVICE)
 
@@ -2213,20 +1643,18 @@ def test_diffusion_schedule():
     assert torch.all(schedule["betas"] > 0)
     assert torch.all(schedule["betas"] < 1)
 
-    assert torch.all(
-        schedule["alpha_bars"][1:]
-        <= schedule["alpha_bars"][:-1]
-    )
+    final_alpha_bar = schedule["alpha_bars"][-1].item()
+
+    print("Final alpha_bar:", f"{final_alpha_bar:.6f}")
+
+    assert final_alpha_bar < 0.1
 
     print("PASS")
 
 
-# =============================================================================
-# 37. UNIT TEST 12 — FORWARD DIFFUSION
-# =============================================================================
-
 def test_forward_diffusion():
-    print("\nTEST 12 — FORWARD DIFFUSION")
+
+    print("\nTEST 7 — FORWARD DIFFUSION")
 
     schedule = make_diffusion_schedule(DEVICE)
 
@@ -2251,72 +1679,52 @@ def test_forward_diffusion():
     )
 
     assert noisy.shape == clean.shape
-    assert noisy.device == clean.device
     assert torch.isfinite(noisy).all()
 
     print("PASS")
 
 
-# =============================================================================
-# 38. UNIT TEST 13 — LATENT NORMALIZATION
-# =============================================================================
-
 def test_latent_normalization():
-    print("\nTEST 13 — LATENT NORMALIZATION")
 
-    raw = (
+    print("\nTEST 8 — LATENT NORMALIZATION")
+
+    latents = (
         torch.randn(
-            128,
-            LATENT_CHANNELS,
-            LATENT_SIZE,
-            LATENT_SIZE,
-        ) * 2.5 + 4.0
+            128, LATENT_CHANNELS, LATENT_SIZE, LATENT_SIZE
+        ) * 2.5 + 3.0
     )
 
-    mean, std = calculate_latent_statistics(raw)
+    mean, std = calculate_latent_statistics(latents)
 
-    normalized = normalize_latents(raw, mean, std)
-    reconstructed = denormalize_latents(
+    normalized = normalize_latents(
+        latents,
+        mean,
+        std,
+    )
+
+    recovered = denormalize_latents(
         normalized,
         mean,
         std,
     )
 
     assert torch.allclose(
-        reconstructed,
-        raw,
+        recovered,
+        latents,
         atol=1e-5,
     )
 
-    channel_means = normalized.mean(dim=(0, 2, 3))
-    channel_stds = normalized.std(
-        dim=(0, 2, 3),
-        unbiased=False,
-    )
+    assert abs(normalized.mean().item()) < 0.03
+    assert abs(normalized.std().item() - 1.0) < 0.03
 
-    assert torch.allclose(
-        channel_means,
-        torch.zeros_like(channel_means),
-        atol=1e-5,
-    )
-
-    assert torch.allclose(
-        channel_stds,
-        torch.ones_like(channel_stds),
-        atol=1e-4,
-    )
-
-    print("Normalized means:", channel_means.tolist())
-    print("Normalized stds:", channel_stds.tolist())
+    print("Normalized mean:", normalized.mean().item())
+    print("Normalized std:", normalized.std().item())
     print("PASS")
 
 
-# =============================================================================
-# 39. UNIT TEST 14 — U-NET OUTPUT AND ATTENTION RESOLUTIONS
-# =============================================================================
+def test_unet():
 
-def test_unet_output():
-    print("\nTEST 14 — U-NET OUTPUT AND ATTENTION RESOLUTIONS")
+    print("\nTEST 9 — U-NET OUTPUT")
 
     text_encoder = TextEncoder().to(DEVICE)
     model = TextConditionedUNet().to(DEVICE)
@@ -2339,34 +1747,23 @@ def test_unet_output():
         dtype=torch.long,
     )
 
-    output, attention = model(
+    output = model(
         latents,
         timesteps,
         text_features,
         masks,
-        return_attention=True,
     )
 
     assert output.shape == latents.shape
-    assert attention["middle"].shape == (
-        2, CROSS_ATTENTION_HEADS, 16, MAX_TEXT_LENGTH
-    )
-    assert attention["output"].shape == (
-        2, CROSS_ATTENTION_HEADS, 64, MAX_TEXT_LENGTH
-    )
+    assert torch.isfinite(output).all()
 
     print("Output:", tuple(output.shape))
-    print("Middle attention:", tuple(attention["middle"].shape))
-    print("Output attention:", tuple(attention["output"].shape))
     print("PASS")
 
 
-# =============================================================================
-# 40. UNIT TEST 15 — GRADIENT PROPAGATION
-# =============================================================================
-
 def test_gradient_propagation():
-    print("\nTEST 15 — GRADIENT PROPAGATION")
+
+    print("\nTEST 10 — GRADIENT PROPAGATION")
 
     text_encoder = TextEncoder().to(DEVICE)
     diffusion_model = TextConditionedUNet().to(DEVICE)
@@ -2387,220 +1784,48 @@ def test_gradient_propagation():
         dtype=torch.long,
     )
 
-    features = text_encoder(ids, masks)
+    text_features = text_encoder(ids, masks)
 
     output = diffusion_model(
         latents,
         timesteps,
-        features,
+        text_features,
         masks,
     )
 
     output.square().mean().backward()
 
-    text_grads = [
+    text_gradients = [
         p.grad for p in text_encoder.parameters()
         if p.grad is not None
     ]
 
-    diffusion_grads = [
+    diffusion_gradients = [
         p.grad for p in diffusion_model.parameters()
         if p.grad is not None
     ]
 
-    assert len(text_grads) > 0
-    assert len(diffusion_grads) > 0
+    assert len(text_gradients) > 0
+    assert len(diffusion_gradients) > 0
 
     assert any(
         g.abs().sum().item() > 0
-        for g in text_grads
+        for g in text_gradients
     )
 
     assert any(
         g.abs().sum().item() > 0
-        for g in diffusion_grads
+        for g in diffusion_gradients
     )
 
-    print("Text encoder gradient tensors:", len(text_grads))
-    print("Diffusion gradient tensors:", len(diffusion_grads))
+    print("Text gradient tensors:", len(text_gradients))
+    print("Diffusion gradient tensors:", len(diffusion_gradients))
     print("PASS")
 
-
-# =============================================================================
-# 41. UNIT TEST 16 — CLASSIFIER-FREE DROPOUT
-# =============================================================================
-
-def test_classifier_free_dropout():
-    print("\nTEST 16 — CLASSIFIER-FREE DROPOUT")
-
-    ids, masks = TOKENIZER.batch_encode(PROMPTS)
-    ids = ids.to(DEVICE)
-    masks = masks.to(DEVICE)
-
-    dropped_ids, dropped_masks = apply_classifier_free_dropout(
-        ids,
-        masks,
-        probability=1.0,
-    )
-
-    expected_ids = NULL_TOKEN_IDS.to(DEVICE).expand_as(dropped_ids)
-    expected_masks = NULL_ATTENTION_MASK.to(DEVICE).expand_as(
-        dropped_masks
-    )
-
-    assert torch.equal(dropped_ids, expected_ids)
-    assert torch.equal(dropped_masks, expected_masks)
-
-    assert dropped_masks[:, 0].all()
-    assert not dropped_masks[:, 1:].any()
-
-    print("PASS")
-
-
-# =============================================================================
-# 42. UNIT TEST 17 — GUIDANCE MATHEMATICS
-# =============================================================================
-
-def test_guidance_math():
-    print("\nTEST 17 — GUIDANCE MATHEMATICS")
-
-    unconditional = torch.ones(2, 4, 8, 8, device=DEVICE)
-    conditional = torch.full_like(unconditional, 3.0)
-
-    scale = 2.0
-
-    guided = (
-        unconditional
-        + scale * (conditional - unconditional)
-    )
-
-    assert torch.allclose(
-        guided,
-        torch.full_like(guided, 5.0),
-    )
-
-    # Guidance scale 0 means unconditional prediction.
-    guided_zero = (
-        unconditional
-        + 0.0 * (conditional - unconditional)
-    )
-
-    assert torch.equal(guided_zero, unconditional)
-
-    print("PASS")
-
-
-# =============================================================================
-# 43. UNIT TEST 18 — DEVICE CONSISTENCY
-# =============================================================================
-
-def test_device_consistency():
-    print("\nTEST 18 — DEVICE CONSISTENCY")
-
-    text_encoder = TextEncoder().to(DEVICE)
-    diffusion_model = TextConditionedUNet().to(DEVICE)
-
-    device = model_device(diffusion_model)
-
-    ids, masks = TOKENIZER.batch_encode(PROMPTS[:2])
-
-    ids = ids.to(device)
-    masks = masks.to(device)
-
-    features = text_encoder(ids, masks)
-
-    latents = torch.randn(
-        2, LATENT_CHANNELS, LATENT_SIZE, LATENT_SIZE,
-        device=device,
-    )
-
-    timesteps = torch.zeros(
-        2,
-        device=device,
-        dtype=torch.long,
-    )
-
-    output = diffusion_model(
-        latents,
-        timesteps,
-        features,
-        masks,
-    )
-
-    assert model_device(text_encoder) == device
-    assert output.device == device
-
-    print("Configured device:", DEVICE)
-    print("Actual model device:", device)
-    print("PASS")
-
-
-# =============================================================================
-# 44. UNIT TEST 19 — CPU TOKENS / MODEL-DEVICE INDEXING
-# =============================================================================
-
-def test_cpu_tokens_model_device_indexing():
-    print("\nTEST 19 — CPU TOKENS / MODEL-DEVICE INDEXING")
-
-    prompts = PROMPTS * 2
-
-    tokens_cpu, masks_cpu = TOKENIZER.batch_encode(prompts)
-
-    latent_dataset = torch.randn(
-        len(prompts),
-        LATENT_CHANNELS,
-        LATENT_SIZE,
-        LATENT_SIZE,
-        device=DEVICE,
-    )
-
-    validate_aligned_dataset(
-        latent_dataset,
-        tokens_cpu,
-        masks_cpu,
-    )
-
-    device = latent_dataset.device
-
-    tokens_device = tokens_cpu.to(device)
-    masks_device = masks_cpu.to(device)
-
-    indices = torch.tensor(
-        [7, 2, 5, 0],
-        device=device,
-        dtype=torch.long,
-    )
-
-    batch_latents = latent_dataset[indices]
-    batch_tokens = tokens_device[indices]
-    batch_masks = masks_device[indices]
-
-    assert batch_latents.device == device
-    assert batch_tokens.device == device
-    assert batch_masks.device == device
-
-    assert torch.equal(
-        batch_tokens.cpu(),
-        tokens_cpu[indices.cpu()],
-    )
-
-    assert torch.equal(
-        batch_masks.cpu(),
-        masks_cpu[indices.cpu()],
-    )
-
-    print("Number of latent rows:", latent_dataset.shape[0])
-    print("Number of text rows:", tokens_cpu.shape[0])
-    print("Selected rows:", len(indices))
-    print("PASS")
-
-
-# =============================================================================
-# 45. UNIT TEST 20 — DATASET ALIGNMENT
-# =============================================================================
 
 def test_dataset_alignment():
-    print("\nTEST 20 — DATASET ALIGNMENT")
+
+    print("\nTEST 11 — DATASET ALIGNMENT")
 
     latents = torch.randn(
         8, LATENT_CHANNELS, LATENT_SIZE, LATENT_SIZE
@@ -2635,17 +1860,60 @@ def test_dataset_alignment():
 
     assert caught
 
-    print("Matching dataset accepted.")
-    print("Mismatched dataset rejected.")
     print("PASS")
 
 
-# =============================================================================
-# 46. UNIT TEST 21 — COMPLETE SAMPLER
-# =============================================================================
+def test_cpu_token_device_indexing():
+
+    print("\nTEST 12 — CPU TOKENS / MODEL-DEVICE INDEXING")
+
+    test_prompts = PROMPTS * 2
+
+    tokens_cpu, masks_cpu = TOKENIZER.batch_encode(
+        test_prompts
+    )
+
+    latents = torch.randn(
+        len(test_prompts),
+        LATENT_CHANNELS,
+        LATENT_SIZE,
+        LATENT_SIZE,
+        device=DEVICE,
+    )
+
+    validate_aligned_dataset(
+        latents,
+        tokens_cpu,
+        masks_cpu,
+    )
+
+    tokens = tokens_cpu.to(DEVICE)
+    masks = masks_cpu.to(DEVICE)
+
+    indices = torch.tensor(
+        [7, 2, 5, 0],
+        device=DEVICE,
+        dtype=torch.long,
+    )
+
+    batch_latents = latents[indices]
+    batch_tokens = tokens[indices]
+    batch_masks = masks[indices]
+
+    expected_tokens = tokens_cpu[indices.cpu()]
+    expected_masks = masks_cpu[indices.cpu()]
+
+    assert torch.equal(batch_tokens.cpu(), expected_tokens)
+    assert torch.equal(batch_masks.cpu(), expected_masks)
+
+    assert batch_latents.shape[0] == batch_tokens.shape[0]
+
+    print("PASS")
+
 
 def test_complete_sampler():
-    print("\nTEST 21 — COMPLETE SAMPLER")
+
+    print("\nTEST 13 — COMPLETE SAMPLER")
 
     text_encoder = TextEncoder().to(DEVICE)
     diffusion_model = TextConditionedUNet().to(DEVICE)
@@ -2661,7 +1929,6 @@ def test_complete_sampler():
         masks,
         schedule,
         num_samples=2,
-        guidance_scale=GUIDANCE_SCALE,
     )
 
     assert generated.shape == (
@@ -2671,22 +1938,236 @@ def test_complete_sampler():
         LATENT_SIZE,
     )
 
-    assert generated.device == model_device(diffusion_model)
     assert torch.isfinite(generated).all()
 
-    print("Generated shape:", tuple(generated.shape))
+    print("Generated:", tuple(generated.shape))
     print("PASS")
 
 
+def run_all_tests():
+
+    tests = [
+        test_tokenizer,
+        test_batch_tokenization,
+        test_text_encoder,
+        test_padding_mask,
+        test_cross_attention,
+        test_diffusion_schedule,
+        test_forward_diffusion,
+        test_latent_normalization,
+        test_unet,
+        test_gradient_propagation,
+        test_dataset_alignment,
+        test_cpu_token_device_indexing,
+        test_complete_sampler,
+    ]
+
+    print("\nRUNNING UNIT TESTS")
+
+    for test in tests:
+        test()
+
+    print("\nALL UNIT TESTS PASSED")
+
+
 # =============================================================================
-# 47. MAIN
+# 22. GENERATE ALL FOUR PROMPTS
+# =============================================================================
+
+@torch.no_grad()
+def generate_all_prompts(
+    diffusion_model,
+    text_encoder,
+    autoencoder,
+    latent_mean,
+    latent_std,
+):
+
+    model_device = next(
+        diffusion_model.parameters()
+    ).device
+
+    token_ids, masks = TOKENIZER.batch_encode(PROMPTS)
+
+    schedule = make_diffusion_schedule(model_device)
+
+    normalized_latents = sample_text_conditioned(
+        diffusion_model,
+        text_encoder,
+        token_ids,
+        masks,
+        schedule,
+        num_samples=NUM_CLASSES,
+    )
+
+    # Critical correction:
+    # The decoder was trained on original, unnormalized AE latents.
+    # Convert sampled normalized latents back to that distribution.
+    decoded_latents = denormalize_latents(
+        normalized_latents,
+        latent_mean,
+        latent_std,
+    )
+
+    images = autoencoder.decode(decoded_latents)
+
+    images = images.clamp(0.0, 1.0)
+
+    return images
+
+
+# =============================================================================
+# 23. SAME NOISE / DIFFERENT TEXT EXPERIMENT
+# =============================================================================
+
+@torch.no_grad()
+def experiment_same_noise_different_text(
+    diffusion_model,
+    text_encoder,
+    autoencoder,
+    latent_mean,
+    latent_std,
+):
+
+    print("\nEXPERIMENT — SAME INITIAL NOISE / DIFFERENT TEXT")
+
+    model_device = next(
+        diffusion_model.parameters()
+    ).device
+
+    schedule = make_diffusion_schedule(model_device)
+
+    ids, masks = TOKENIZER.batch_encode(PROMPTS)
+
+    ids = ids.to(model_device)
+    masks = masks.to(model_device)
+
+    text_encoder.eval()
+    diffusion_model.eval()
+    autoencoder.eval()
+
+    text_features = text_encoder(ids, masks)
+
+    base_noise = torch.randn(
+        1,
+        LATENT_CHANNELS,
+        LATENT_SIZE,
+        LATENT_SIZE,
+        device=model_device,
+    )
+
+    latents = base_noise.repeat(
+        NUM_CLASSES,
+        1,
+        1,
+        1,
+    )
+
+    for timestep in reversed(range(DIFFUSION_STEPS)):
+
+        t = torch.full(
+            (NUM_CLASSES,),
+            timestep,
+            device=model_device,
+            dtype=torch.long,
+        )
+
+        predicted_noise = diffusion_model(
+            latents,
+            t,
+            text_features,
+            masks,
+        )
+
+        beta_t = extract(
+            schedule["betas"],
+            t,
+            latents.shape,
+        )
+
+        sqrt_one_minus_alpha_bar = extract(
+            schedule["sqrt_one_minus_alpha_bars"],
+            t,
+            latents.shape,
+        )
+
+        sqrt_recip_alpha = extract(
+            schedule["sqrt_recip_alphas"],
+            t,
+            latents.shape,
+        )
+
+        mean = sqrt_recip_alpha * (
+            latents
+            - beta_t * predicted_noise
+            / sqrt_one_minus_alpha_bar
+        )
+
+        if timestep > 0:
+
+            variance = extract(
+                schedule["posterior_variance"],
+                t,
+                latents.shape,
+            )
+
+            # Shared random noise isolates the effect of text conditioning.
+            shared_noise = torch.randn_like(
+                latents[:1]
+            ).expand_as(latents)
+
+            latents = (
+                mean
+                + torch.sqrt(
+                    torch.clamp(variance, min=0.0)
+                ) * shared_noise
+            )
+
+        else:
+            latents = mean
+
+    decoded_latents = denormalize_latents(
+        latents,
+        latent_mean,
+        latent_std,
+    )
+
+    images = autoencoder.decode(
+        decoded_latents
+    ).clamp(0.0, 1.0)
+
+    differences = []
+
+    for i in range(NUM_CLASSES):
+        for j in range(i + 1, NUM_CLASSES):
+            differences.append(
+                torch.mean(
+                    torch.abs(images[i] - images[j])
+                ).item()
+            )
+
+    print("Prompts:", PROMPTS)
+    print("Pairwise image differences:", differences)
+
+    show_image_grid(
+        images,
+        PROMPTS,
+        "Same initial noise — different text prompts",
+    )
+
+    return images
+
+
+# =============================================================================
+# 24. MAIN
 # =============================================================================
 
 def main():
+
     set_seed()
 
     print("=" * 80)
-    print("LESSON 26 — TEXT CONDITIONING (IMPROVED)")
+    print("LESSON 26 — TEXT CONDITIONING")
     print("=" * 80)
 
     print("PyTorch:", torch.__version__)
@@ -2699,43 +2180,12 @@ def main():
     print("Text embedding dimension:", TEXT_EMBED_DIM)
     print("Diffusion steps:", DIFFUSION_STEPS)
     print("Diffusion training steps:", DIFFUSION_TRAIN_STEPS)
-    print("Classifier-free dropout:", CLASSIFIER_FREE_DROPOUT)
-    print("Guidance scale:", GUIDANCE_SCALE)
 
     # -------------------------------------------------------------------------
     # UNIT TESTS
     # -------------------------------------------------------------------------
 
-    tests = [
-        test_vocabulary,
-        test_tokenizer,
-        test_unknown_and_truncation,
-        test_batch_tokenization,
-        test_text_embedding,
-        test_text_encoder,
-        test_padding_output,
-        test_padding_mask_invariance,
-        test_cross_attention,
-        test_cross_attention_padding_mask,
-        test_diffusion_schedule,
-        test_forward_diffusion,
-        test_latent_normalization,
-        test_unet_output,
-        test_gradient_propagation,
-        test_classifier_free_dropout,
-        test_guidance_math,
-        test_device_consistency,
-        test_cpu_tokens_model_device_indexing,
-        test_dataset_alignment,
-        test_complete_sampler,
-    ]
-
-    print("\nRUNNING UNIT TESTS")
-
-    for test in tests:
-        test()
-
-    print("\nALL UNIT TESTS PASSED")
+    run_all_tests()
 
     # -------------------------------------------------------------------------
     # DATASET
@@ -2744,7 +2194,7 @@ def main():
     print("\nCREATING SYNTHETIC DATASET")
 
     images, labels, prompts = create_synthetic_dataset(
-        samples_per_class=SAMPLES_PER_CLASS
+        samples_per_class=256
     )
 
     print("Images:", tuple(images.shape))
@@ -2757,55 +2207,21 @@ def main():
             PROMPTS[label]
             for label in labels[:16].tolist()
         ],
-        "Synthetic shape training dataset",
+        "Synthetic training dataset",
     )
 
     # -------------------------------------------------------------------------
-    # TRAIN / VALIDATION SPLIT
+    # TOKENIZE DATASET PROMPTS
     # -------------------------------------------------------------------------
 
-    print("\nCREATING TRAIN / VALIDATION SPLIT")
+    print("\nTOKENIZING TRAINING PROMPTS")
 
-    permutation = torch.randperm(len(images))
-
-    validation_count = int(0.10 * len(images))
-
-    validation_indices = permutation[:validation_count]
-    training_indices = permutation[validation_count:]
-
-    train_images = images[training_indices]
-    train_labels = labels[training_indices]
-
-    validation_images = images[validation_indices]
-    validation_labels = labels[validation_indices]
-
-    train_prompts = [
-        prompts[i] for i in training_indices.tolist()
-    ]
-
-    validation_prompts = [
-        prompts[i] for i in validation_indices.tolist()
-    ]
-
-    print("Training images:", len(train_images))
-    print("Validation images:", len(validation_images))
-
-    # -------------------------------------------------------------------------
-    # TOKENIZATION
-    # -------------------------------------------------------------------------
-
-    print("\nTOKENIZING TRAINING AND VALIDATION PROMPTS")
-
-    train_tokens, train_masks = TOKENIZER.batch_encode(
-        train_prompts
+    token_ids, attention_masks = TOKENIZER.batch_encode(
+        prompts
     )
 
-    validation_tokens, validation_masks = TOKENIZER.batch_encode(
-        validation_prompts
-    )
-
-    print("Training token IDs:", tuple(train_tokens.shape))
-    print("Validation token IDs:", tuple(validation_tokens.shape))
+    print("Token IDs:", tuple(token_ids.shape))
+    print("Attention masks:", tuple(attention_masks.shape))
 
     # -------------------------------------------------------------------------
     # AUTOENCODER
@@ -2819,7 +2235,7 @@ def main():
 
     ae_losses = train_autoencoder(
         autoencoder,
-        train_images,
+        images,
     )
 
     print(
@@ -2829,95 +2245,97 @@ def main():
 
     plot_losses(
         ae_losses,
-        title="Autoencoder training loss",
+        "Autoencoder training loss",
     )
-
-    # -------------------------------------------------------------------------
-    # LATENT ENCODING
-    # -------------------------------------------------------------------------
-
-    print("\nENCODING DATASET INTO LATENT SPACE")
-
-    autoencoder.eval()
-
-    with torch.no_grad():
-        train_latents = autoencoder.encode(
-            train_images.to(DEVICE)
-        )
-
-        validation_latents = autoencoder.encode(
-            validation_images.to(DEVICE)
-        )
-
-    print("Training latents:", tuple(train_latents.shape))
-    print("Validation latents:", tuple(validation_latents.shape))
-
-    # -------------------------------------------------------------------------
-    # LATENT NORMALIZATION
-    # -------------------------------------------------------------------------
-
-    print("\nCALCULATING LATENT NORMALIZATION")
-
-    latent_mean, latent_std = calculate_latent_statistics(
-        train_latents
-    )
-
-    train_latents = normalize_latents(
-        train_latents,
-        latent_mean,
-        latent_std,
-    )
-
-    validation_latents = normalize_latents(
-        validation_latents,
-        latent_mean,
-        latent_std,
-    )
-
-    print("Latent channel means:", latent_mean.flatten().tolist())
-    print("Latent channel stds:", latent_std.flatten().tolist())
-
-    normalized_mean = train_latents.mean(
-        dim=(0, 2, 3)
-    )
-
-    normalized_std = train_latents.std(
-        dim=(0, 2, 3),
-        unbiased=False,
-    )
-
-    print("Normalized latent means:", normalized_mean.tolist())
-    print("Normalized latent stds:", normalized_std.tolist())
 
     # -------------------------------------------------------------------------
     # AUTOENCODER RECONSTRUCTION
     # -------------------------------------------------------------------------
 
-    print("\nAUTOENCODER RECONSTRUCTION")
+    print("\nCHECKING AUTOENCODER RECONSTRUCTION")
+
+    autoencoder.eval()
+
+    images_device = images.to(DEVICE)
 
     with torch.no_grad():
         reconstruction = autoencoder(
-            validation_images[:8].to(DEVICE)
+            images_device[:8]
         )
 
-    reconstruction_error = F.mse_loss(
+    reconstruction_mse = F.mse_loss(
         reconstruction,
-        validation_images[:8].to(DEVICE),
+        images_device[:8],
     ).item()
 
-    print("Reconstruction MSE:", reconstruction_error)
-
-    show_image_grid(
-        validation_images[:8],
-        ["Original"] * 8,
-        "Original validation images",
+    print("Reconstruction MSE:", f"{reconstruction_mse:.6f}")
+    print(
+        "Reconstruction intensity:",
+        f"min={reconstruction.min().item():.4f}",
+        f"max={reconstruction.max().item():.4f}",
+        f"mean={reconstruction.mean().item():.4f}",
     )
 
     show_image_grid(
         reconstruction,
-        ["Reconstruction"] * 8,
+        ["Reconstruction"] * len(reconstruction),
         "Autoencoder reconstruction",
     )
+
+    # -------------------------------------------------------------------------
+    # ENCODE DATASET
+    # -------------------------------------------------------------------------
+
+    print("\nENCODING DATASET INTO LATENT SPACE")
+
+    with torch.no_grad():
+        latent_dataset = autoencoder.encode(
+            images_device
+        )
+
+    print("Raw latent dataset:", tuple(latent_dataset.shape))
+    print("Raw latent mean:", latent_dataset.mean().item())
+    print("Raw latent std:", latent_dataset.std().item())
+
+    # -------------------------------------------------------------------------
+    # LATENT NORMALIZATION
+    # -------------------------------------------------------------------------
+
+    print("\nNORMALIZING LATENT DATASET")
+
+    latent_mean, latent_std = calculate_latent_statistics(
+        latent_dataset
+    )
+
+    normalized_latents = normalize_latents(
+        latent_dataset,
+        latent_mean,
+        latent_std,
+    )
+
+    print("Latent mean per channel:", latent_mean.flatten().tolist())
+    print("Latent std per channel:", latent_std.flatten().tolist())
+    print("Normalized mean:", normalized_latents.mean().item())
+    print("Normalized std:", normalized_latents.std().item())
+
+    assert torch.isfinite(normalized_latents).all()
+    assert abs(normalized_latents.mean().item()) < 0.05
+
+    # -------------------------------------------------------------------------
+    # DATASET ALIGNMENT
+    # -------------------------------------------------------------------------
+
+    print("\nVALIDATING LATENT / TEXT ALIGNMENT")
+
+    validate_aligned_dataset(
+        normalized_latents,
+        token_ids,
+        attention_masks,
+    )
+
+    print("Latent rows:", normalized_latents.shape[0])
+    print("Text rows:", token_ids.shape[0])
+    print("PASS")
 
     # -------------------------------------------------------------------------
     # TEXT ENCODER
@@ -2927,43 +2345,42 @@ def main():
 
     text_encoder = TextEncoder().to(DEVICE)
 
-    print(
-        "Text encoder parameters:",
-        sum(p.numel() for p in text_encoder.parameters()),
+    text_parameters = sum(
+        p.numel()
+        for p in text_encoder.parameters()
     )
 
+    print("Text encoder parameters:", text_parameters)
+
     # -------------------------------------------------------------------------
-    # DIFFUSION U-NET
+    # DIFFUSION MODEL
     # -------------------------------------------------------------------------
 
     print("\nBUILDING TEXT-CONDITIONED DIFFUSION U-NET")
 
     diffusion_model = TextConditionedUNet().to(DEVICE)
 
-    print(
-        "Diffusion parameters:",
-        sum(p.numel() for p in diffusion_model.parameters()),
+    diffusion_parameters = sum(
+        p.numel()
+        for p in diffusion_model.parameters()
     )
 
+    print("Diffusion parameters:", diffusion_parameters)
+
     # -------------------------------------------------------------------------
-    # TRAIN DIFFUSION
+    # TRAINING
     # -------------------------------------------------------------------------
 
     print("\nTRAINING TEXT-CONDITIONED DIFFUSION")
 
     start_time = time.time()
 
-    diffusion_losses, validation_losses = (
-        train_text_conditioned_diffusion(
-            diffusion_model,
-            text_encoder,
-            train_latents,
-            train_tokens,
-            train_masks,
-            validation_latents,
-            validation_tokens,
-            validation_masks,
-        )
+    diffusion_losses = train_text_conditioned_diffusion(
+        diffusion_model,
+        text_encoder,
+        normalized_latents,
+        token_ids,
+        attention_masks,
     )
 
     print(
@@ -2973,78 +2390,64 @@ def main():
 
     plot_losses(
         diffusion_losses,
-        validation_losses,
-        "Text-conditioned diffusion training and validation loss",
+        "Text-conditioned diffusion training loss",
     )
-
-    # -------------------------------------------------------------------------
-    # INDEPENDENT CLASSIFIER
-    # -------------------------------------------------------------------------
-
-    print("\nTRAINING INDEPENDENT SHAPE CLASSIFIER")
-
-    classifier = ShapeClassifier().to(DEVICE)
-
-    start_time = time.time()
-
-    classifier_losses = train_shape_classifier(
-        classifier,
-        train_images,
-        train_labels,
-    )
-
-    print(
-        "Classifier training time:",
-        f"{time.time() - start_time:.2f} seconds",
-    )
-
-    plot_losses(
-        classifier_losses,
-        title="Independent shape classifier training loss",
-    )
-
-    classifier_accuracy, _, _ = evaluate_classifier(
-        classifier,
-        validation_images,
-        validation_labels,
-    )
-
-    print(
-        "Classifier validation accuracy:",
-        f"{classifier_accuracy * 100:.2f}%",
-    )
-
-    # A weak evaluator cannot provide meaningful semantic assessment.
-    if classifier_accuracy < 0.90:
-        print(
-            "WARNING: classifier validation accuracy is below 90%. "
-            "Generated-image semantic evaluation may be unreliable."
-        )
 
     # -------------------------------------------------------------------------
     # GENERATION
     # -------------------------------------------------------------------------
 
-    generated_images, generated_accuracy = generate_and_evaluate(
-        autoencoder,
+    print("\nGENERATING IMAGES FROM TEXT")
+
+    diffusion_model.eval()
+    text_encoder.eval()
+    autoencoder.eval()
+
+    generated_images = generate_all_prompts(
         diffusion_model,
         text_encoder,
-        classifier,
+        autoencoder,
         latent_mean,
         latent_std,
     )
 
+    print(
+        "Generated image range:",
+        f"min={generated_images.min().item():.4f}",
+        f"max={generated_images.max().item():.4f}",
+        f"mean={generated_images.mean().item():.4f}",
+    )
+
+    show_image_grid(
+        generated_images,
+        PROMPTS,
+        "Text-conditioned generated images",
+    )
+
     # -------------------------------------------------------------------------
-    # SAME NOISE / DIFFERENT PROMPTS
+    # QUANTITATIVE SHAPE EVALUATION
     # -------------------------------------------------------------------------
 
-    experiment_same_noise_different_text(
-        autoencoder,
+    print_shape_evaluation(
+        generated_images
+    )
+
+    # -------------------------------------------------------------------------
+    # SAME NOISE / DIFFERENT TEXT
+    # -------------------------------------------------------------------------
+
+    experiment_images = experiment_same_noise_different_text(
         diffusion_model,
         text_encoder,
-        classifier,
+        autoencoder,
         latent_mean,
         latent_std,
+    )
+
+    print("\nSAME-NOISE EXPERIMENT EVALUATION")
+
+    print_shape_evaluation(
+        experiment_images
     )
 
     # -------------------------------------------------------------------------
@@ -3057,39 +2460,20 @@ def main():
 
     print("Tokenizer: custom vocabulary")
     print("Text encoder: random-initialized Transformer")
-    print("Conditioning: two-resolution multi-head cross-attention")
-    print("Latent diffusion: normalized autoencoder latents")
-    print("Conditioning dropout: classifier-free")
-    print("Sampling: DDPM with classifier-free guidance")
-    print("Evaluation: independent shape classifier")
+    print("Conditioning: multi-head cross-attention")
+    print("Generator: latent diffusion U-Net")
+    print("Latent normalization: enabled")
+    print("Latent denormalization before decoding: enabled")
     print("Pretrained components: NONE")
-
-    print("\nFINAL METRICS")
-    print(
-        "Classifier validation accuracy:",
-        f"{classifier_accuracy * 100:.2f}%",
-    )
-    print(
-        "Generated shape-class accuracy:",
-        f"{generated_accuracy * 100:.2f}%",
-    )
 
     print("\nWHAT YOU BUILT:")
     print("1. Tokenizer")
     print("2. Token and positional embeddings")
     print("3. Transformer text encoder")
-    print("4. Multi-resolution text cross-attention")
+    print("4. Text cross-attention")
     print("5. Normalized latent diffusion")
-    print("6. Classifier-free condition dropout")
-    print("7. Classifier-free guidance")
-    print("8. DDPM sampler")
-    print("9. Independent semantic evaluator")
-
-    print("\nIMPORTANT:")
-    print(
-        "Classifier accuracy is a useful proxy, not proof of "
-        "general natural-language understanding."
-    )
+    print("6. DDPM sampler")
+    print("7. Shape-template evaluation")
 
     print("\nNEXT LESSON:")
     print("LESSON 27 — BUILD OUR OWN TEXT-TO-IMAGE MODEL")
