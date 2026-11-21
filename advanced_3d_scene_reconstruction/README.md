@@ -168,3 +168,25 @@ The internal length unit is metres; camera optical axes follow OpenCV (+X right,
 +Y down, +Z forward); transforms are named `T_target_source`; occupancy is
 tri-state (unknown=-1, free=0, occupied=1). These conventions are intentionally
 explicit to prevent silent frame, scale, and unknown-space errors across modules.
+
+
+## Camera input adapters
+
+The shared camera interface now has adapters for USB/UVC, Intel RealSense D435,
+and a two-camera stereo capture pair.
+
+- [Camera adapter documentation](camera_adapters/README.md)
+- [USB/UVC adapter](camera_adapters/usb_camera.py)
+- [RealSense D435 adapter](camera_adapters/realsense_d435.py)
+- [Stereo pair adapter](camera_adapters/stereo_camera.py)
+
+Run hardware-free adapter contract tests:
+
+```bash
+python -m unittest -v tests.test_camera_adapters
+```
+
+The USB adapter requires OpenCV. The D435 adapter additionally requires a
+compatible Intel RealSense SDK and `pyrealsense2`. Stereo capture records
+timestamp skew but does not claim hardware synchronization; metric stereo
+depth requires a separately measured/calibrated baseline and rectification.
