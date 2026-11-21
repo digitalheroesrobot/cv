@@ -75,7 +75,8 @@ def backproject_keypoints(keypoints_uv, depth_m, K, min_depth_m=0.15,
 def estimate_rgbd_pnp(previous_uv, current_uv, previous_depth_m, K,
                       min_depth_m=0.15, max_depth_m=8.0,
                       reprojection_threshold_px=2.5, iterations=150,
-                      confidence=0.999, min_inliers=12, seed=7):
+                      confidence=0.999, min_inliers=12, seed=7,
+                      patch_radius=2):
     """Estimate metric T_current_previous using previous-frame depth + PnP.
 
     Correspondences are image features in previous/current frames. Previous
@@ -88,7 +89,8 @@ def estimate_rgbd_pnp(previous_uv, current_uv, previous_depth_m, K,
     if prev_uv.shape != curr_uv.shape or prev_uv.ndim != 2 or prev_uv.shape[1] != 2:
         raise ValueError("previous_uv and current_uv must both be Nx2")
     object_points, valid = backproject_keypoints(
-        prev_uv, previous_depth_m, K, min_depth_m, max_depth_m)
+        prev_uv, previous_depth_m, K, min_depth_m, max_depth_m,
+        patch_radius=patch_radius)
     if len(valid) < min_inliers:
         raise RuntimeError(f"only {len(valid)} valid depth correspondences")
     image_points = curr_uv[valid].astype(np.float32)
