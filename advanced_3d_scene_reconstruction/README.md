@@ -624,3 +624,30 @@ This is a classical geometry baseline, not learned scene flow or a complete
 dynamic SLAM system. Input must be ego-motion compensated; pose drift can
 otherwise make the static world appear to move. The static map is bounded
 voxel aggregation without ray-based free-space clearing.
+
+
+## Lesson 57 — Advanced scene flow and motion prediction
+
+Lesson 57 adds local scene-flow interpolation from reciprocal point
+correspondences, local rigid-like/non-rigid-like flow decomposition,
+dynamic-object point-cloud ICP registration, constant-velocity future position
+prediction, and closest-approach collision screening.
+
+- [Runnable offline lab](lesson57_scene_flow_motion_prediction.py)
+- [Motion estimation engine](multi_camera/motion_prediction.py)
+- [Numerical tests](tests/test_motion_prediction.py)
+
+Run:
+
+```bash
+python lesson57_scene_flow_motion_prediction.py --frames 30 --visualize
+python -m unittest -v tests.test_motion_prediction
+```
+
+The local flow is a dense-ish interpolation baseline, not learned dense scene
+flow. Local flow consistency is a heuristic: rotation can produce spatially
+varying flow even for a rigid body. ICP requires adequate overlap and a useful
+initial alignment. Future motion assumes constant velocity. Collision screening
+uses circumscribed spheres around object boxes and is not a safety-rated
+collision avoidance method. All input coordinates must be metric and
+ego-motion compensated into a common world frame.
