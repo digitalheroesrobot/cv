@@ -62,12 +62,12 @@ def run_demo(seed=53, visualize=False):
         fit = fit_clock_model(device, master, outlier_threshold_s=0.001)
         models[camera_id] = fit.model
         fit_reports[camera_id] = {
-            "estimated_offset_s": fit.model.offset_s,
+            "estimated_offset_at_reference_s": fit.model.offset_s,
             "estimated_drift_ppm": fit.model.drift_ppm,
             "fit_rmse_s": fit.model.residual_rmse_s,
             "inliers": int(np.count_nonzero(fit.inlier_mask)),
             "rejected": int(len(fit.inlier_mask) - np.count_nonzero(fit.inlier_mask)),
-            "true_offset_s": truth[camera_id][1],
+            "true_offset_at_reference_s": (truth[camera_id][0] - 1.0) * np.mean(observations[camera_id][0]) + truth[camera_id][1],
             "true_drift_ppm": (truth[camera_id][0] - 1.0) * 1e6,
         }
     sync = MultiCameraClockSynchronizer(
