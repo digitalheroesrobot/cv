@@ -116,3 +116,25 @@ The lab uses deterministic inputs. Appearance retrieval is not a metric
 relocalization result; a real RGB-D system must still validate candidate poses
 geometrically. Memory estimates cover registered payload arrays rather than
 the complete Python process or GPU memory.
+
+
+### Lesson 51 — Multi-Camera RGB-D World Reconstruction
+
+- Validate timestamp skew across multiple camera observations.
+- Rectify each camera's registered RGB-D data using its own calibration.
+- Back-project metric depth into camera-local point clouds.
+- Transform each cloud using calibrated `T_world_camera` extrinsics.
+- Fuse overlapping clouds in a common world coordinate frame.
+- Reduce duplicate geometry using voxel aggregation and export PLY.
+
+Run offline:
+
+```bash
+python lesson51_multi_camera_reconstruction.py --visualize
+python -m unittest -v tests.test_multi_camera_reconstruction
+```
+
+The synthetic demo validates transform direction and fusion plumbing using
+known extrinsics. It does not estimate camera extrinsics. Real cameras require
+a measured rig calibration and a shared timestamp clock domain; software
+synchronization alone is not hardware synchronization.
