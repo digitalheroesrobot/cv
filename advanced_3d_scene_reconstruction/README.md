@@ -292,3 +292,30 @@ Lesson 45 uses ORB descriptors, Essential Matrix RANSAC, and RGB-D PnP.
 The Essential Matrix is scale-ambiguous; metric translation comes from
 previous-frame depth lifted into 3D. This is a local visual-odometry front-end,
 not a complete SLAM system.
+
+
+## Lesson 46 — RGB-D Visual Odometry + ICP Fusion
+
+- [Runnable Lesson 46](lesson46_visual_icp_fusion.py)
+- [Confidence-aware pose fusion engine](sensor_fusion/pose_fusion.py)
+- [Fusion design and limitations](sensor_fusion/README.md)
+- [Numerical tests](tests/test_sensor_fusion.py)
+
+Run locally:
+
+```bash
+python lesson46_visual_icp_fusion.py --synthetic --visualize
+python -m unittest -v tests.test_sensor_fusion
+```
+
+For a connected Intel RealSense D435:
+
+```bash
+python lesson46_visual_icp_fusion.py --realsense --visualize
+```
+
+Lesson 46 converts ORB/PnP and ICP into the same transform convention,
+scores their quality, gates large disagreements, and fuses consistent
+relative poses. The accepted camera pose is accumulated into a bounded
+voxel point map. This is a local fusion front-end, not a probabilistic
+factor graph or globally optimized SLAM system.
