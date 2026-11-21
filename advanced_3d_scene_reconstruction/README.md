@@ -594,3 +594,33 @@ This lesson does not contain a neural detector or learned ReID model. Input
 detections must already be calibrated into the same world frame. Geometric
 cross-camera fusion is a conservative baseline; it is not a learned identity
 association system or production benchmark.
+
+
+## Lesson 56 — Dynamic 4D scene understanding and static/dynamic separation
+
+Lesson 56 consumes sequential point clouds that have already been transformed
+into a stable world frame. It estimates reciprocal nearest-neighbour scene
+flow, separates low-motion background points from moving observations, keeps
+unmatched points in an explicit unknown class, clusters dynamic observations,
+and updates a bounded static voxel map without inserting dynamic points.
+
+- [Runnable offline lab](lesson56_dynamic_4d_scene_understanding.py)
+- [Temporal scene engine](multi_camera/dynamic_scene.py)
+- [Numerical tests](tests/test_dynamic_scene.py)
+
+Run:
+
+```bash
+python lesson56_dynamic_4d_scene_understanding.py --frames 45 --visualize
+python -m unittest -v tests.test_dynamic_scene
+```
+
+The three point labels are `-1 unknown`, `0 static`, and `1 dynamic`.
+Unmatched points remain unknown because disocclusion and changing depth
+sampling must not be mistaken for object motion. Optional ObjectTrack boxes
+provide an additional conservative dynamic mask.
+
+This is a classical geometry baseline, not learned scene flow or a complete
+dynamic SLAM system. Input must be ego-motion compensated; pose drift can
+otherwise make the static world appear to move. The static map is bounded
+voxel aggregation without ray-based free-space clearing.
