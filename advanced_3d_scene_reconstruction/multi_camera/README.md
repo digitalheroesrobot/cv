@@ -71,3 +71,34 @@ Important assumptions:
   a dedicated calibration/rectification implementation.
 - Voxel fusion removes/reduces duplicate samples but is not a TSDF, mesh, or
   radiometric color-blending reconstruction.
+
+
+## 7. Lesson 52 — camera rig extrinsic optimization
+
+`rig_calibration.py` builds a connected graph from pairwise camera
+measurements. Each edge stores `T_camera_j_camera_i`, while each optimized
+node stores `T_rig_camera`. The optimizer fixes one camera as the rig origin,
+weights rotation and translation residuals using supplied standard deviations,
+and applies robust nonlinear least squares.
+
+For a physical pair (camera_i, camera_j):
+
+1. Calibrate each camera intrinsic matrix and lens distortion.
+2. Capture at least five synchronized views of the same rigid chessboard.
+3. Call `calibrate_stereo_from_chessboards(...)`.
+4. Convert the result with `stereo_result_to_rig_edge(camera_i, camera_j, result)`.
+5. Build a connected graph and call `RigPoseGraph(camera_ids, edges).optimize()`.
+6. Check per-edge residuals and validate using held-out target observations.
+
+Run the offline numerical lab:
+
+```bash
+python lesson52_camera_rig_calibration.py --visualize
+python -m unittest -v tests.test_rig_calibration
+```
+
+The approximate covariance is derived from the local Jacobian information
+matrix. It is conditional on the chosen residual parameterization, uncertainty
+scales, and robust-loss behavior. Poor target coverage, inaccurate square
+dimensions, unsynchronized captures, or weak graph connectivity can produce
+misleadingly confident results.
