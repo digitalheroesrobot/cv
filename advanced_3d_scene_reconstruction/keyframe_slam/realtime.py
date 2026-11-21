@@ -126,7 +126,7 @@ class RealTimeRGBDSLAM:
                     min_inliers=self.loop_min_inliers, reprojection_threshold_px=2.5)
             except (RuntimeError, ValueError, np.linalg.LinAlgError):
                 continue
-            if inliers < 15 or not np.isfinite(pnp_rmse) or pnp_rmse > 3.0:
+            if inliers < self.loop_min_inliers or not np.isfinite(pnp_rmse) or pnp_rmse > 3.0:
                 continue
             verification = self.loop_verifier.verify_cloud_pair(
                 candidate.point_cloud, current_keyframe.point_cloud,
