@@ -26,7 +26,7 @@ All processing is local. No model weights, network access, or cloud services.
 """
 import argparse
 import numpy as np
-from visual_odometry import ORBRGBDVisualOdometry
+from visual_odometry import ORBRGBDVisualOdometry, rectify_rgbd
 
 
 def make_textured_scene(width, height, seed=5):
@@ -120,7 +120,10 @@ def run_realsense(args):
             count = 0
             while count < args.max_frames:
                 if sample is not None and sample.depth is not None:
-                    result = vo.process(sample.frame.image, sample.depth.in_metres())
+                    rectified_image, rectified_depth = rectify_rgbd(
+                        sample.frame.image, sample.depth.in_metres(),
+                        sample.calibration.K, sample.calibration.distortion)
+                    result = vo.process(rectified_image, rectified_depth)
                     count += 1
                     print(f"frame={count:05d} ok={result.success} "
                           f"matches={result.feature_matches:4d} "
