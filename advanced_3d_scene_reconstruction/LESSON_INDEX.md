@@ -94,3 +94,25 @@ python -m unittest -v tests.test_realtime_slam
 Tracking failure starts a fresh local submap so visual odometry and ICP do not
 silently use mismatched previous-frame references. This baseline does not
 include IMU, TSDF, semantic dynamic masking, or production-grade relocalization.
+
+
+### Lesson 50 — Robust SLAM, Submap Management and Relocalization
+
+- Tracking degradation/lost detection with hysteresis and controlled recovery.
+- Bounded submap management and keyframe/point memory limits.
+- Appearance-based keyframe relocalization candidate ranking.
+- Duplicate loop suppression and PnP/ICP consistency checks.
+- 6x6 covariance-to-information conversion and residual whitening.
+- Rolling operational health metrics for frame failures and timing gaps.
+
+Run locally:
+
+```bash
+python lesson50_robust_slam.py
+python -m unittest -v tests.test_robust_slam
+```
+
+The lab uses deterministic inputs. Appearance retrieval is not a metric
+relocalization result; a real RGB-D system must still validate candidate poses
+geometrically. Memory estimates cover registered payload arrays rather than
+the complete Python process or GPU memory.
