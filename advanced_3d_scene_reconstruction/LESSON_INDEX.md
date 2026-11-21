@@ -68,3 +68,29 @@ python -m unittest -v tests.test_geometric_loop_closure
 
 The current synthetic experiment tests geometry verification with known PnP
 initialization. It does not evaluate a real image retrieval or RGB-D PnP pipeline.
+
+
+### Lesson 49 — Real-Time RGB-D SLAM Integration
+
+- Integrate RealSense D435 aligned color/depth capture and camera calibration.
+- Rectify RGB-D using the active camera distortion coefficients.
+- Fuse ORB RGB-D visual odometry and ICP frame-to-frame registration.
+- Select and store keyframes with local RGB-D point clouds and ORB descriptors.
+- Propose revisited locations and verify them using RGB-D PnP plus ICP.
+- Add verified loop edges, optimize the sparse pose graph, and reintegrate the global point map.
+- Save an offline PLY point map and JSON trajectory report.
+
+Run with D435:
+```bash
+python lesson49_realtime_rgbd_slam.py --realsense --visualize
+```
+
+Run synthetic graph/map backend and tests:
+```bash
+python lesson49_realtime_rgbd_slam.py --synthetic --visualize
+python -m unittest -v tests.test_realtime_slam
+```
+
+Tracking failure starts a fresh local submap so visual odometry and ICP do not
+silently use mismatched previous-frame references. This baseline does not
+include IMU, TSDF, semantic dynamic masking, or production-grade relocalization.
