@@ -75,11 +75,24 @@ class RealSenseD435Adapter:
         # Prefer the sensor timestamp if available. Convert milliseconds to seconds.
         sensor_timestamp = float(color_frame.get_timestamp()) / 1000.0
         timestamp = sensor_timestamp if sensor_timestamp >= 0 else time.monotonic()
+        # RealSense timestamp domains are device/firmware dependent. Preserve
+        # the SDK domain label so downstream code never assumes two devices
+        # share a clock merely because both report milliseconds.
+        try:
+            timestamp_domain = str(color_frame.get_frame_timestamp_domain())
+        except Exception:
+            timestamp_domain = "unknown"
+        try:
+            sensor_frame_number = int(color_frame.get_frame_number())
+        except Exception:
+            sensor_frame_number = self._frame_id
         valid = np.isfinite(depth_m) & (depth_m > 0)
         sample = CameraSample(
             frame=CameraFrame(
                 color, timestamp, self.camera_id, self._frame_id, "BGR",
                 metadata={"source": "realsense", "sensor_timestamp_ms": sensor_timestamp,
+                          "timestamp_domain": timestamp_domain,
+                          "sensor_frame_number": sensor_frame_number,
                           "depth_scale_m_per_unit": self.depth_scale},
             ),
             calibration=self.calibration,
