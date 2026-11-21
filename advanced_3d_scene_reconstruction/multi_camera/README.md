@@ -136,3 +136,35 @@ number in metadata. Devices with different timestamp domains require a
 calibrated mapping into one master clock before frame pairing. The synthetic
 lab does not claim that independently connected D435 devices are hardware
 synchronized.
+
+
+## 9. Lesson 54 — threaded real-time RGB-D capture
+
+`capture.py` owns camera adapter lifecycle, launches one reader thread per
+camera, converts frame and depth timestamps into a configured master clock,
+maintains bounded per-camera queues, and emits complete RGB-D bundles whose
+maximum timestamp skew is within a configured threshold. It records captured
+frames, stale drops, queue overflow, out-of-order timestamps, reader errors,
+and emitted/rejected bundles.
+
+Run the local synthetic pipeline:
+
+```bash
+python lesson54_realtime_multicamera_world.py --cameras 3 --frames 30 --visualize
+python -m unittest -v tests.test_multicamera_capture
+```
+
+Run connected D435 devices with measured calibration:
+
+```bash
+python lesson54_realtime_multicamera_world.py --realsense \
+  --serials SERIAL_A,SERIAL_B \
+  --poses-json configs/camera_rig.json \
+  --clock-json configs/camera_clocks.json
+```
+
+The rig configuration must contain `T_world_camera` for each `camN`. Clock
+configuration is optional only when timestamp domains are already known to be
+compatible. Software matching cannot synchronize exposure. The latest fused
+cloud is exported as a world-frame PLY snapshot; temporal object tracking and
+persistent map integration are intentionally outside this lesson.
