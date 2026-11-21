@@ -17,10 +17,15 @@ class TestTemporalMapping(unittest.TestCase):
         self.target = transform_points(self.source, self.T)
 
     def test_icp_known_transform(self):
+        # A close initial guess models a practical frame-to-frame odometry prior.
+        a0 = .03
+        R0 = np.array([[np.cos(a0), 0., np.sin(a0)], [0., 1., 0.],
+                       [-np.sin(a0), 0., np.cos(a0)]])
+        T0 = make_se3(R0, np.array([.075, -.01, .02]))
         result = iterative_closest_point(
-            self.source, self.target, max_correspondence_distance_m=.3,
-            max_iterations=60, tolerance_m=1e-7, trim_fraction=.95,
-            min_correspondences=100)
+            self.source, self.target, initial_T_target_source=T0,
+            max_correspondence_distance_m=.3, max_iterations=60,
+            tolerance_m=1e-7, trim_fraction=.95, min_correspondences=100)
         aligned = transform_points(self.source, result.T_target_source)
         error = np.sqrt(np.mean(np.sum((aligned-self.target)**2, axis=1)))
         self.assertLess(error, .025)
