@@ -319,3 +319,28 @@ scores their quality, gates large disagreements, and fuses consistent
 relative poses. The accepted camera pose is accumulated into a bounded
 voxel point map. This is a local fusion front-end, not a probabilistic
 factor graph or globally optimized SLAM system.
+
+## Lesson 47 — Keyframe RGB-D SLAM and pose graph optimization
+
+Lesson 47 adds sparse keyframe selection, ORB appearance-based loop-closure
+candidate ranking, relative-pose graph constraints, a fixed gauge anchor, and
+robust nonlinear least-squares optimization.
+
+- [Lesson 47 runnable synthetic experiment](lesson47_keyframe_rgbd_slam.py)
+- [Keyframe SLAM engine](keyframe_slam/README.md)
+- [Pose graph optimizer](keyframe_slam/pose_graph.py)
+- [Keyframe manager and loop candidate detector](keyframe_slam/keyframe_manager.py)
+- [Numerical tests](tests/test_keyframe_slam.py)
+
+Run locally:
+
+```bash
+python lesson47_keyframe_rgbd_slam.py --synthetic --visualize
+python -m unittest -v tests.test_keyframe_slam
+```
+
+The synthetic experiment demonstrates how a verified loop constraint reduces
+trajectory drift. ORB matching only proposes loop candidates; geometric
+verification is mandatory before adding a loop edge. This is a sparse SLAM
+backend teaching implementation, not a complete production SLAM system.
+
