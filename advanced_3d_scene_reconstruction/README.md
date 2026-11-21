@@ -146,3 +146,25 @@ The advanced track distinguishes runnable mathematical reference labs from actua
 Continue beyond the first research track with 24 additional lessons covering transformer-based 3D perception, foundation depth models, metric scale and uncertainty, neural rendering, dynamic 4D reconstruction, multi-camera calibration and fusion, open-world 3D understanding, occupancy forecasting, risk-aware planning interfaces, GPU optimization, streaming reliability, and the final Camera-to-3D World Intelligence capstone.
 
 - [Research Extensions — Lessons 43–66](research_extensions/README.md)
+
+
+## Shared data contracts and geometry engine
+
+All course tracks now share canonical NumPy data structures and coordinate conventions.
+Start here before implementing Lessons 43–66 or connecting external foundation models.
+
+- [Shared data contracts and geometry documentation](common/README.md)
+- [Typed data structures](common/data_types.py)
+- [SE(3), projection, back-projection, and uncertainty utilities](common/geometry.py)
+- [Geometry engine tests](tests/test_common_geometry.py)
+
+Run the contract and geometry tests from this directory:
+
+```bash
+python -m unittest -v tests.test_common_geometry
+```
+
+The internal length unit is metres; camera optical axes follow OpenCV (+X right,
++Y down, +Z forward); transforms are named `T_target_source`; occupancy is
+tri-state (unknown=-1, free=0, occupied=1). These conventions are intentionally
+explicit to prevent silent frame, scale, and unknown-space errors across modules.
