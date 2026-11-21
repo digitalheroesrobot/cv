@@ -50,3 +50,34 @@ calibrated uncertainty, robust data association, relocalization, submap
 management, dynamic-object filtering, and global map correction at scale.
 All runtime computation is local; no network calls or automatic model
 downloads are used.
+
+
+## Lesson 49 — Real-time RGB-D SLAM integration
+
+`realtime.py` connects the existing local ORB RGB-D VO, visual/ICP fusion,
+keyframe selection, ORB loop-candidate ranking, RGB-D PnP, ICP geometric
+verification, pose-graph optimization, and keyframe point-cloud reintegration.
+
+The D435 runner rectifies registered color/depth using the active camera
+intrinsics and distortion coefficients. A loop edge is inserted only after
+feature matching, metric PnP, and ICP consistency checks. When tracking is
+rejected, the current implementation starts a fresh local submap to keep VO
+and ICP temporal reference frames synchronized; it does not silently bridge
+an untracked gap.
+
+Run the hardware integration from the course root:
+
+```bash
+python lesson49_realtime_rgbd_slam.py --realsense --visualize
+```
+
+Press q to stop. The program writes an ASCII PLY global point map and a JSON
+trajectory report under `outputs/`. The synthetic mode exercises the graph
+and map-reintegration backend only; it is not a camera tracking benchmark.
+
+The implementation is an educational sparse RGB-D SLAM integration, not a
+production SLAM system. It does not include IMU fusion, loop-closure
+relocalization across submaps, TSDF fusion, photometric bundle adjustment,
+semantic dynamic-object masking, or a calibrated probabilistic estimator.
+Real loop closure may not occur in every session: sufficient revisited visual
+texture, valid depth, overlap, and geometric consistency are required.
