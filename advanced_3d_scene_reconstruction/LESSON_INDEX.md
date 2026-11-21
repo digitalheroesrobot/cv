@@ -138,3 +138,26 @@ The synthetic demo validates transform direction and fusion plumbing using
 known extrinsics. It does not estimate camera extrinsics. Real cameras require
 a measured rig calibration and a shared timestamp clock domain; software
 synchronization alone is not hardware synchronization.
+
+
+### Lesson 52 — Multi-Camera Extrinsic Calibration and Camera Rig Optimization
+
+- Define explicit `T_rig_camera` and pairwise `T_camera_j_camera_i` conventions.
+- Convert pairwise OpenCV stereo calibration results into graph constraints.
+- Require a connected camera calibration graph and fix one gauge anchor.
+- Optimize all camera extrinsics with uncertainty-weighted robust least squares.
+- Inspect per-edge translation/rotation residuals and approximate covariance.
+- Validate rig poses against synthetic ground truth and held-out physical captures.
+
+Run offline:
+
+```bash
+python lesson52_camera_rig_calibration.py --visualize
+python -m unittest -v tests.test_rig_calibration
+```
+
+For physical calibration, calibrate intrinsics first, collect synchronized
+chessboard pairs for each graph edge, run stereo calibration, and optimize the
+connected rig graph. The synthetic demo validates transform conventions and
+optimization only; it does not replace real target capture or held-out
+calibration validation.
