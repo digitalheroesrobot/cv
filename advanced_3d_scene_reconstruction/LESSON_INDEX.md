@@ -22,3 +22,14 @@ Every lesson writes a JSON report to `outputs/`. Geometry lessons also save poin
 
 ## Important engineering rule
 A camera image is a 2D projection. A useful 3D scene requires camera calibration and depth/scale information. Monocular depth networks often provide relative depth; do not interpret their output as metric distance without calibration or another scale source.
+
+## Run the automated checks
+
+From this directory:
+
+```bash
+python -m unittest -v test_course_core.py
+```
+
+The tests check the pinhole projection equations, expected inverse-depth scaling,
+synthetic frame validity, report generation, and invalid lesson handling.
