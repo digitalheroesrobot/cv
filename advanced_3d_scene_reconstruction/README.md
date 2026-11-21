@@ -241,3 +241,28 @@ python lesson43_rgbd_to_3d_scene.py --realsense
 
 This is a classical RGB-D geometry baseline. It is not a semantic detector,
 monocular metric-depth model, SLAM system, or complete surface reconstruction.
+
+
+## Offline execution policy
+
+All lesson programs are designed to execute locally without internet access.
+See [OFFLINE_POLICY.md](OFFLINE_POLICY.md) for dependency preparation, local
+model checkpoint rules, and the runtime network prohibition.
+
+## Lesson 44 — Temporal 3D mapping
+
+- [Runnable Lesson 44](lesson44_temporal_3d_mapping.py)
+- [Local ICP odometry and map engine](temporal_mapping/odometry.py)
+- [Technical notes and limitations](temporal_mapping/README.md)
+- [Numerical tests](tests/test_temporal_mapping.py)
+
+Run the synthetic multi-frame mapping example:
+
+```bash
+python lesson44_temporal_3d_mapping.py --visualize
+python -m unittest -v tests.test_temporal_mapping
+```
+
+Lesson 44 uses local point-cloud geometry and does not download models or call
+remote inference services. It is a teaching baseline for sequential ICP mapping,
+not a loop-closure or globally optimized SLAM implementation.
