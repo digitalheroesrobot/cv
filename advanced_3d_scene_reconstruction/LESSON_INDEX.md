@@ -184,3 +184,27 @@ Clock calibration requires paired observations of the same event. Arbitrary
 frame-arrival timestamps are contaminated by variable transport latency.
 Software alignment does not synchronize sensor exposure; validate hardware
 triggering and timestamp domains separately for a real multi-D435 rig.
+
+
+### Lesson 54 — Real-Time Multi-Camera RGB-D World Reconstruction
+
+- Run one camera-adapter reader thread per physical camera.
+- Normalize RGB and depth timestamps into a configured master clock.
+- Maintain bounded queues and pair complete multi-camera bundles by timestamp.
+- Handle stale frames, out-of-order timestamps, queue overflow, and reader failures.
+- Apply calibrated camera-rig extrinsics and fuse point clouds in world coordinates.
+- Monitor bundle rate, fusion latency, timestamp skew, queue depth, and frame drops.
+- Export the latest temporally coherent world-frame point-cloud snapshot.
+
+Run offline:
+
+```bash
+python lesson54_realtime_multicamera_world.py --cameras 3 --frames 30 --visualize
+python -m unittest -v tests.test_multicamera_capture
+```
+
+For live D435 capture, supply device serials and measured `T_world_camera`
+extrinsics. Supply clock calibration when devices do not already share a
+validated timestamp domain. Software timestamp pairing is not hardware
+exposure synchronization. The PLY output is a latest-frame snapshot, not a
+persistent dynamic SLAM map.
