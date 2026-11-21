@@ -20,6 +20,10 @@ from .rig_calibration import (
     stereo_result_to_rig_edge,
 )
 from .capture import CaptureBundle, MultiCameraCaptureManager
+from .object_tracking import (
+    Detection3D, FusedDetection3D, MultiCameraDetectionFusion,
+    ConstantVelocityKalman, MultiCamera3DTracker,
+)
 from .time_sync import (
     ClockFitResult, ClockModel, MultiCameraClockSynchronizer,
     fit_clock_model, interpolate_camera_pose,
@@ -34,5 +38,7 @@ __all__ = [
     "stereo_result_to_rig_edge", "ClockFitResult", "ClockModel",
     "MultiCameraClockSynchronizer", "fit_clock_model",
     "interpolate_camera_pose", "CaptureBundle",
-    "MultiCameraCaptureManager",
+    "MultiCameraCaptureManager", "Detection3D", "FusedDetection3D",
+    "MultiCameraDetectionFusion", "ConstantVelocityKalman",
+    "MultiCamera3DTracker",
 ]
