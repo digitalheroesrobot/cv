@@ -429,3 +429,32 @@ world-frame pose. Submap metadata merging does not perform geometric map
 alignment. Memory accounting covers registered payloads, not process RSS or
 GPU allocations. The covariance tangent ordering and reference frame must
 match the pose residual used by the optimizer.
+
+
+## Lesson 51 — Multi-camera RGB-D world reconstruction
+
+Lesson 51 extends camera-local geometry into one shared world frame. It
+rectifies each registered RGB-D stream, validates timestamp skew, back-projects
+metric depth, applies the supplied camera-to-world extrinsics, and fuses the
+clouds with voxel reduction.
+
+- [Runnable Lesson 51](lesson51_multi_camera_reconstruction.py)
+- [Multi-camera reconstruction engine](multi_camera/reconstruction.py)
+- [Timestamp synchronization](multi_camera/synchronization.py)
+- [Intrinsic/stereo calibration helpers](multi_camera/calibration.py)
+- [World-frame point-cloud fusion](multi_camera/fusion.py)
+- [Offline tests](tests/test_multi_camera_reconstruction.py)
+
+Run the synthetic offline demonstration:
+
+```bash
+python lesson51_multi_camera_reconstruction.py --visualize
+python -m unittest -v tests.test_multi_camera_reconstruction
+```
+
+The synthetic demonstration uses known camera extrinsics. Real deployment must
+supply measured `T_world_camera` poses and timestamps from a common clock
+domain. Software timestamp matching is not hardware triggering. This lesson
+does not estimate arbitrary multi-camera rig extrinsics or solve cross-camera
+registration automatically. The RGB-D rectifier currently supports the
+pinhole distortion model.
