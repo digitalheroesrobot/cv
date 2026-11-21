@@ -84,7 +84,7 @@ def run_synthetic(args):
     # This loop edge represents a candidate that has already passed geometric
     # verification. Appearance similarity alone is not enough to add this edge.
     graph.add_edge(PoseGraphEdge(
-        0, len(truth) - 1, np.eye(4),
+        0, len(truth) - 1, relative(truth[0], truth[-1]),
         translation_information=args.loop_weight,
         rotation_information=args.loop_weight,
         kind="verified_loop"))
