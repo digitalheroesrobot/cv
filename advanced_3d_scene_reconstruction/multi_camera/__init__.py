@@ -19,6 +19,7 @@ from .rig_calibration import (
     calibrate_camera_rig,
     stereo_result_to_rig_edge,
 )
+from .capture import CaptureBundle, MultiCameraCaptureManager
 from .time_sync import (
     ClockFitResult, ClockModel, MultiCameraClockSynchronizer,
     fit_clock_model, interpolate_camera_pose,
@@ -32,5 +33,6 @@ __all__ = [
     "RigEdge", "RigPoseGraph", "calibrate_camera_rig",
     "stereo_result_to_rig_edge", "ClockFitResult", "ClockModel",
     "MultiCameraClockSynchronizer", "fit_clock_model",
-    "interpolate_camera_pose",
+    "interpolate_camera_pose", "CaptureBundle",
+    "MultiCameraCaptureManager",
 ]
