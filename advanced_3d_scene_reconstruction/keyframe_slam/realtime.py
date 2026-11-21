@@ -184,12 +184,16 @@ class RealTimeRGBDSLAM:
             T_world_camera = fused.T_world_current.copy()
             fusion_message = fused.message
             if not fused.success:
-                result = SLAMFrameResult(
-                    False, self.frame_index, float(timestamp),
-                    self.fusion.T_world_previous.copy(), False, 0, False,
-                    len(self.global_map), "frame rejected: " + fusion_message)
-                self.frame_index += 1
-                return result
+                # VO has consumed this image, while the fusion state rejected
+                # its cloud. Restart a clean local submap so the next VO pair
+                # and the ICP previous cloud refer to the same camera frame.
+                self.reset()
+                visual = self.vo.process(image, depth)
+                self.fusion.initialize(points)
+                T_world_camera = np.eye(4)
+                fusion_success = True
+                fusion_message = (
+                    "tracking lost; restarted local submap at current frame")
 
         keypoints, descriptors = self._extract_keyframe_features(image)
         tracking_quality = (
