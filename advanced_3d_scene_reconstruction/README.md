@@ -401,3 +401,31 @@ The synthetic mode validates graph optimization and map reintegration; it
 does not emulate ORB tracking or real-camera loop closure. Real loop edges
 require feature matches, RGB-D PnP, and ICP geometric consistency. This is a
 local educational SLAM integration, not a production system.
+
+
+## Lesson 50 — Robust SLAM, submap management, and relocalization
+
+Lesson 50 adds reusable supervision and resource-management components for
+long-running RGB-D SLAM sessions:
+
+- Tracking state machine with hysteresis and lost/relocalizing states.
+- Bounded submap registry with keyframe and point-count limits.
+- Appearance-based keyframe relocalization candidate ranking (not pose proof).
+- Duplicate and PnP/ICP geometric-consistency loop-closure policy.
+- 6x6 covariance-to-information conversion and residual whitening.
+- Explicit keyframe, point, and NumPy payload memory budgets.
+- Rolling frame-failure and timestamp-gap health metrics.
+
+Run the deterministic offline lab and tests:
+
+```bash
+python lesson50_robust_slam.py
+python -m unittest -v tests.test_robust_slam
+```
+
+The relocalization index only ranks candidates. A live system must still
+estimate and verify metric pose with RGB-D PnP/ICP before recovering the
+world-frame pose. Submap metadata merging does not perform geometric map
+alignment. Memory accounting covers registered payloads, not process RSS or
+GPU allocations. The covariance tangent ordering and reference frame must
+match the pose residual used by the optimizer.
