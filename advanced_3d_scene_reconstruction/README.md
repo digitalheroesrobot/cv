@@ -211,3 +211,33 @@ Calibration routines require OpenCV and real calibration images. Timestamp
 pairing requires a common clock domain; it is not a substitute for hardware
 trigger synchronization. Point-cloud fusion requires externally validated
 camera-to-world poses and does not estimate them.
+
+
+## Lesson 43 — RGB-D to 3D scene reconstruction
+
+The first executable scene-geometry pipeline is available:
+
+- [Lesson 43 runnable script](lesson43_rgbd_to_3d_scene.py)
+- [Scene reconstruction engine](scene_reconstruction/geometry_pipeline.py)
+- [Engine documentation](scene_reconstruction/README.md)
+- [Numerical tests](tests/test_scene_reconstruction.py)
+
+The pipeline performs depth back-projection, voxel downsampling, statistical
+outlier removal, ground-plane RANSAC, Euclidean clustering, PCA-oriented
+bounding-box estimation, and optional camera-to-world transformation.
+
+Run a synthetic example:
+
+```bash
+python lesson43_rgbd_to_3d_scene.py --visualize
+python -m unittest -v tests.test_scene_reconstruction
+```
+
+For Intel RealSense D435:
+
+```bash
+python lesson43_rgbd_to_3d_scene.py --realsense
+```
+
+This is a classical RGB-D geometry baseline. It is not a semantic detector,
+monocular metric-depth model, SLAM system, or complete surface reconstruction.
