@@ -71,6 +71,13 @@ class USBCameraAdapter:
         self._frame_id += 1
         return CameraSample(frame=frame, calibration=self.calibration)
 
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
     def close(self) -> None:
         if self._capture is not None and self._owns_capture:
             self._capture.release()
