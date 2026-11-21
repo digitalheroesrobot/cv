@@ -20,6 +20,12 @@ from .rig_calibration import (
     stereo_result_to_rig_edge,
 )
 from .capture import CaptureBundle, MultiCameraCaptureManager
+from .motion_prediction import (
+    LocalFlowResult, MotionDecomposition, RegistrationResult,
+    MotionPrediction, CollisionPrediction, estimate_local_scene_flow,
+    decompose_rigid_nonrigid, register_dynamic_cloud, predict_track,
+    predict_pair_collision, motion_vector_field,
+)
 from .dynamic_scene import (
     SceneFlowResult, DynamicSceneResult, estimate_scene_flow,
     points_inside_track_boxes, DynamicSceneModel,
@@ -46,4 +52,8 @@ __all__ = [
     "MultiCameraDetectionFusion", "ConstantVelocityKalman",
     "MultiCamera3DTracker", "SceneFlowResult", "DynamicSceneResult",
     "estimate_scene_flow", "points_inside_track_boxes", "DynamicSceneModel",
+    "LocalFlowResult", "MotionDecomposition", "RegistrationResult",
+    "MotionPrediction", "CollisionPrediction", "estimate_local_scene_flow",
+    "decompose_rigid_nonrigid", "register_dynamic_cloud", "predict_track",
+    "predict_pair_collision", "motion_vector_field",
 ]
