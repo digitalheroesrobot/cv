@@ -80,7 +80,8 @@ class TestMultiCamera3DTracker(unittest.TestCase):
         tracker = MultiCamera3DTracker(min_hits=1)
         first = tracker.update([det(0, 0, label="box")], 0)[0].track_id
         second = tracker.update([det(0, .1, label="person")], .1)
-        self.assertNotEqual(second[0].track_id, first)
+        self.assertIn(first, [t.track_id for t in second])  # old track is briefly retained
+        self.assertIn(first + 1, [t.track_id for t in second])  # class mismatch starts a new ID
 
     def test_track_expires_after_max_age_without_observations(self):
         tracker = MultiCamera3DTracker(min_hits=1, max_track_age_s=.25,
