@@ -107,6 +107,8 @@ class MultiCameraCaptureManager:
             try:
                 sample = adapter.read()
                 if sample is None:
+                    if getattr(adapter, "exhausted", False):
+                        break
                     self.stats[camera_id]["read_none"] += 1
                     self._stop.wait(self.read_retry_s)
                     continue
