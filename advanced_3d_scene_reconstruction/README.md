@@ -563,3 +563,34 @@ it deliberately does not accumulate moving objects across time. Hardware
 exposure synchronization, rolling-shutter correction, dynamic object tracking,
 persistent map fusion, loop closure, and calibration validation remain
 separate engineering tasks.
+
+
+## Lesson 55 — Multi-camera 3D object tracking and data association
+
+Lesson 55 adds a 3D multi-object tracking backend after multi-camera detections
+have been transformed into a common metric world frame. It first fuses
+cross-camera duplicate observations, then associates fused detections with
+persistent tracks using gated Hungarian assignment and a constant-velocity
+Kalman filter.
+
+- [Runnable synthetic tracking lab](lesson55_multicamera_3d_tracking.py)
+- [Detection fusion and tracker implementation](multi_camera/object_tracking.py)
+- [Offline numerical tests](tests/test_object_tracking.py)
+
+Run:
+
+```bash
+python lesson55_multicamera_3d_tracking.py --frames 100 --visualize
+python -m unittest -v tests.test_object_tracking
+```
+
+The backend supports class gating, 3D Mahalanobis distance, object-size
+consistency, optional appearance embeddings, short-occlusion persistence,
+track confirmation, and expiration based on time since the last observation.
+The synthetic demo creates multiple camera observations, crossing trajectories,
+and a short occlusion.
+
+This lesson does not contain a neural detector or learned ReID model. Input
+detections must already be calibrated into the same world frame. Geometric
+cross-camera fusion is a conservative baseline; it is not a learned identity
+association system or production benchmark.
