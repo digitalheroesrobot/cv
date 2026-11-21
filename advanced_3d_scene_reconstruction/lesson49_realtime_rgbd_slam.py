@@ -135,7 +135,8 @@ def run_realsense(args):
                 loop_max_rotation_gap_deg=args.loop_max_rotation_gap_deg,
                 registration_voxel_m=args.registration_voxel,
                 map_voxel_m=args.map_voxel,
-                max_map_points=args.max_map_points)
+                max_map_points=args.max_map_points,
+                distortion=camera.calibration.distortion)
             while True:
                 sample = camera.read()
                 if sample is None or sample.depth is None:
