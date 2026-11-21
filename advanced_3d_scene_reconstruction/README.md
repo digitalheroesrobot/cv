@@ -458,3 +458,37 @@ domain. Software timestamp matching is not hardware triggering. This lesson
 does not estimate arbitrary multi-camera rig extrinsics or solve cross-camera
 registration automatically. The RGB-D rectifier currently supports the
 pinhole distortion model.
+
+
+## Lesson 52 — Multi-camera extrinsic calibration and rig optimization
+
+Lesson 52 estimates a shared camera-rig coordinate system from pairwise
+metric camera transforms. It adds a connected calibration pose graph, a fixed
+gauge anchor, uncertainty-weighted SE(3) residuals, robust nonlinear least
+squares, per-edge residual reports, and a local inverse-Hessian covariance
+approximation.
+
+- [Runnable Lesson 52](lesson52_camera_rig_calibration.py)
+- [Rig pose-graph optimizer](multi_camera/rig_calibration.py)
+- [Pairwise chessboard/stereo calibration](multi_camera/calibration.py)
+- [Offline numerical tests](tests/test_rig_calibration.py)
+
+Run locally:
+
+```bash
+python lesson52_camera_rig_calibration.py --visualize
+python -m unittest -v tests.test_rig_calibration
+```
+
+For real calibration, first calibrate each camera's intrinsics, capture at
+least five synchronized chessboard pairs for every selected camera pair,
+call `calibrate_stereo_from_chessboards`, convert each result with
+`stereo_result_to_rig_edge`, and optimize the connected graph. Use a rigid,
+dimensionally measured board; vary its image position, distance, and
+orientation. Validate with held-out observations. The synthetic lesson does
+not claim physical calibration accuracy.
+
+The anchor camera defines the rig origin and orientation (gauge fixing).
+Approximate covariance is local and depends on residual scaling, edge quality,
+and graph conditioning. It is not a substitute for a full calibration
+uncertainty analysis.
