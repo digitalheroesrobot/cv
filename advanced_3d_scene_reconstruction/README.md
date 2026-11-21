@@ -190,3 +190,24 @@ The USB adapter requires OpenCV. The D435 adapter additionally requires a
 compatible Intel RealSense SDK and `pyrealsense2`. Stereo capture records
 timestamp skew but does not claim hardware synchronization; metric stereo
 depth requires a separately measured/calibrated baseline and rectification.
+
+
+## Multi-camera synchronization, calibration, and fusion
+
+The course now includes a shared multi-camera layer:
+
+- [Multi-camera documentation](multi_camera/README.md)
+- [Timestamp frame synchronizer](multi_camera/synchronization.py)
+- [Chessboard intrinsic/stereo calibration](multi_camera/calibration.py)
+- [World-frame point-cloud fusion](multi_camera/fusion.py)
+
+Run hardware-free tests:
+
+```bash
+python -m unittest -v tests.test_multi_camera
+```
+
+Calibration routines require OpenCV and real calibration images. Timestamp
+pairing requires a common clock domain; it is not a substitute for hardware
+trigger synchronization. Point-cloud fusion requires externally validated
+camera-to-world poses and does not estimate them.
