@@ -50,3 +50,21 @@ python -m unittest -v tests.test_keyframe_slam
 
 A visual match is only a loop candidate. Add a loop edge only after geometric verification using RGB-D constraints such as PnP and ICP.
 
+
+
+### Lesson 48 — RGB-D Geometric Loop Closure and Global Map Correction
+
+- RGB-D PnP metric initialization for candidate-to-current alignment.
+- ICP refinement and correspondence/RMSE quality checks.
+- Reject loop constraints when PnP and ICP estimates disagree.
+- Insert only geometrically verified loop edges into the pose graph.
+- Rebuild the global point map from keyframe-local clouds and optimized poses.
+
+Run:
+```bash
+python lesson48_rgbd_geometric_loop_closure.py --synthetic --visualize
+python -m unittest -v tests.test_geometric_loop_closure
+```
+
+The current synthetic experiment tests geometry verification with known PnP
+initialization. It does not evaluate a real image retrieval or RGB-D PnP pipeline.
