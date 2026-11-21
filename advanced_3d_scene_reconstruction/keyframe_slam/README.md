@@ -81,3 +81,32 @@ relocalization across submaps, TSDF fusion, photometric bundle adjustment,
 semantic dynamic-object masking, or a calibrated probabilistic estimator.
 Real loop closure may not occur in every session: sufficient revisited visual
 texture, valid depth, overlap, and geometric consistency are required.
+
+
+## Lesson 50 — Robust SLAM supervision
+
+The `robust_slam.py` module provides reusable components for long-running
+SLAM sessions:
+
+- `TrackingMonitor`: hysteretic INITIALIZING/TRACKING/DEGRADED/LOST/
+  RELOCALIZING state transitions.
+- `SubmapManager`: bounded submap/keyframe/point registry.
+- `KeyframeRelocalizationIndex`: ORB descriptor candidate ranking.
+- `LoopClosurePolicy`: duplicate suppression and independent PnP/ICP
+  transform-consistency gates.
+- `information_from_covariance` and `whiten_pose_residual`: 6D uncertainty
+  weighting utilities.
+- `MemoryBudget` and `SLAMHealthMonitor`: bounded payload accounting and
+  rolling operational metrics.
+
+Run from the course root:
+
+```bash
+python lesson50_robust_slam.py
+python -m unittest -v tests.test_robust_slam
+```
+
+These components are integration primitives, not a claim of complete
+multi-session SLAM. Candidate retrieval must be followed by metric geometric
+verification. Submap geometry alignment and merging must be performed by a
+pose-graph/registration backend; metadata merge alone is insufficient.
