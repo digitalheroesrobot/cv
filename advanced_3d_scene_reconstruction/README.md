@@ -518,3 +518,48 @@ Arbitrary host arrival times are not valid clock pairs because transport and
 scheduler latency vary. Software timestamp conversion is not hardware
 exposure synchronization. Preserve and inspect each RealSense timestamp
 domain; do not assume separate devices share a clock without validation.
+
+
+## Lesson 54 — Real-time multi-camera RGB-D world reconstruction
+
+Lesson 54 integrates independent RGB-D adapters, per-camera capture threads,
+clock-domain conversion, bounded frame queues, temporal bundle matching,
+calibrated camera-rig extrinsics, point-cloud fusion, and runtime health
+metrics. Synthetic mode is the default and runs locally without cameras or
+network access.
+
+- [Runnable pipeline](lesson54_realtime_multicamera_world.py)
+- [Threaded capture manager](multi_camera/capture.py)
+- [Existing RGB-D world reconstructor](multi_camera/reconstruction.py)
+- [Offline capture tests](tests/test_multicamera_capture.py)
+
+Run the offline pipeline:
+
+```bash
+python lesson54_realtime_multicamera_world.py --cameras 3 --frames 30 --visualize
+python -m unittest -v tests.test_multicamera_capture
+python -m unittest -v tests.test_multi_camera_reconstruction
+```
+
+For connected D435 devices, provide measured rig extrinsics and serial numbers:
+
+```bash
+python lesson54_realtime_multicamera_world.py --realsense \
+  --serials SERIAL_A,SERIAL_B \
+  --poses-json configs/camera_rig.json \
+  --clock-json configs/camera_clocks.json \
+  --frames 300 --visualize
+```
+
+The rig JSON contains a `T_world_camera` 4x4 matrix for each generated camera
+ID (`cam0`, `cam1`, ...). The optional clock JSON contains each camera's
+`scale`, `offset_s`, and `reference_device_s`. Identity clock models are
+only appropriate after confirming all devices already use a common clock.
+Do not derive clock pairs from unrelated USB arrival times.
+
+This is a real-time integration baseline, not production multi-camera SLAM.
+The exported PLY is the latest synchronized frame's fused world snapshot;
+it deliberately does not accumulate moving objects across time. Hardware
+exposure synchronization, rolling-shutter correction, dynamic object tracking,
+persistent map fusion, loop closure, and calibration validation remain
+separate engineering tasks.
