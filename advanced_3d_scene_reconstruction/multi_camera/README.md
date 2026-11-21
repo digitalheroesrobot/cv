@@ -102,3 +102,37 @@ matrix. It is conditional on the chosen residual parameterization, uncertainty
 scales, and robust-loss behavior. Poor target coverage, inaccurate square
 dimensions, unsynchronized captures, or weak graph connectivity can produce
 misleadingly confident results.
+
+
+## 8. Lesson 53 — clock-domain calibration and frame alignment
+
+`time_sync.py` provides:
+
+- An affine device-to-master clock model, including offset and drift (ppm).
+- Robust least-squares fitting from paired synchronization events with MAD
+  outlier rejection.
+- A multi-camera frame aligner that converts timestamps before matching.
+- Explicit counters for duplicate IDs, out-of-order frames, queue overflow,
+  stale frames, and emitted synchronized sets.
+- Camera-pose interpolation using linear translation and SO(3) SLERP.
+
+Run the deterministic offline lab:
+
+```bash
+python lesson53_multicamera_time_synchronization.py --visualize
+python -m unittest -v tests.test_time_sync
+```
+
+The clock fit requires pairs that represent the same physical synchronization
+event, such as a shared hardware trigger or a precisely timestamped pulse.
+Do not fit clock offset from unrelated host frame-arrival times: USB,
+scheduler, buffering, and exposure latency contaminate those observations.
+A fitted software clock model corrects timestamp coordinates; it does not
+synchronize sensor exposure. For hardware synchronization, use supported
+trigger wiring and validate exposure timing independently.
+
+RealSense frames now retain the SDK timestamp-domain label and sensor frame
+number in metadata. Devices with different timestamp domains require a
+calibrated mapping into one master clock before frame pairing. The synthetic
+lab does not claim that independently connected D435 devices are hardware
+synchronized.
