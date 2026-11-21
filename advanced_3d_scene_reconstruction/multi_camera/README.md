@@ -168,3 +168,31 @@ configuration is optional only when timestamp domains are already known to be
 compatible. Software matching cannot synchronize exposure. The latest fused
 cloud is exported as a world-frame PLY snapshot; temporal object tracking and
 persistent map integration are intentionally outside this lesson.
+
+
+## 10. Lesson 55 — Multi-camera 3D detection fusion and tracking
+
+`object_tracking.py` introduces:
+
+- `Detection3D`: one camera's metric world-frame detection.
+- `MultiCameraDetectionFusion`: cross-camera duplicate fusion, never merging
+  two detections from the same camera.
+- `ConstantVelocityKalman`: 6D position/velocity state with a 3D measurement.
+- `MultiCamera3DTracker`: gated Hungarian assignment, class/size/optional
+  embedding checks, track confirmation, occlusion tolerance, and expiration.
+
+All detections must already use the same world coordinate frame and metres.
+The fusion stage uses geometric proximity and optional supplied embeddings;
+it does not estimate camera poses or run a neural detector.
+
+Run the offline demo and tests:
+
+```bash
+python lesson55_multicamera_3d_tracking.py --frames 100 --visualize
+python -m unittest -v tests.test_object_tracking
+```
+
+This is a tracking backend lab, not a complete multi-camera MOT system. A
+production deployment still needs a validated detector, calibrated 3D
+uncertainty, learned appearance/ReID, robust occlusion handling, and evaluation
+on representative sequences.
