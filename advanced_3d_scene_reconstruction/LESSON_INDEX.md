@@ -161,3 +161,26 @@ chessboard pairs for each graph edge, run stereo calibration, and optimize the
 connected rig graph. The synthetic demo validates transform conventions and
 optimization only; it does not replace real target capture or held-out
 calibration validation.
+
+
+### Lesson 53 — Multi-Camera Clock Synchronization and Temporal Alignment
+
+- Distinguish sensor timestamps, host arrival timestamps, and master-clock time.
+- Estimate affine clock offset and drift from paired synchronization events.
+- Reject synchronization-event outliers with robust residual statistics.
+- Convert independent camera clocks into one master time domain.
+- Pair nearest frames under a configurable maximum skew.
+- Account for duplicates, out-of-order frames, queue overflow, and stale frames.
+- Interpolate camera poses using linear translation and SO(3) SLERP.
+
+Run offline:
+
+```bash
+python lesson53_multicamera_time_synchronization.py --visualize
+python -m unittest -v tests.test_time_sync
+```
+
+Clock calibration requires paired observations of the same event. Arbitrary
+frame-arrival timestamps are contaminated by variable transport latency.
+Software alignment does not synchronize sensor exposure; validate hardware
+triggering and timestamp domains separately for a real multi-D435 rig.
