@@ -43,8 +43,11 @@ class RealTimeRGBDSLAM:
                  loop_max_translation_gap_m=.12,
                  loop_max_rotation_gap_deg=7.0,
                  registration_voxel_m=.04, map_voxel_m=.035,
-                 max_map_points=250000):
+                 max_map_points=250000, distortion=None):
         self.K = np.asarray(K, dtype=np.float64)
+        self.distortion = (np.zeros(5, dtype=np.float64) if distortion is None
+                           else np.asarray(distortion, dtype=np.float64).reshape(-1))
+        self.loop_min_inliers = int(loop_min_inliers)
         if self.K.shape != (3, 3):
             raise ValueError("K must be a 3x3 camera matrix")
         self.min_depth_m, self.max_depth_m = float(min_depth_m), float(max_depth_m)
@@ -120,7 +123,7 @@ class RealTimeRGBDSLAM:
                 T_current_candidate, inliers, pnp_rmse, _ = estimate_rgbd_pnp(
                     prev_uv, curr_uv, candidate.depth_m, self.K,
                     min_depth_m=self.min_depth_m, max_depth_m=self.max_depth_m,
-                    min_inliers=15, reprojection_threshold_px=2.5)
+                    min_inliers=self.loop_min_inliers, reprojection_threshold_px=2.5)
             except (RuntimeError, ValueError, np.linalg.LinAlgError):
                 continue
             if inliers < 15 or not np.isfinite(pnp_rmse) or pnp_rmse > 3.0:
@@ -160,7 +163,7 @@ class RealTimeRGBDSLAM:
 
     def process(self, image_bgr, depth_m, timestamp):
         image, depth = rectify_rgbd(
-            image_bgr, depth_m, self.K, np.zeros(5, dtype=np.float64))
+            image_bgr, depth_m, self.K, self.distortion)
         depth_map = DepthMap(depth, float(timestamp), "rgbd_slam", unit="m")
         cloud = depth_to_point_cloud(
             depth_map, self._calibration(), stride=self.cloud_stride,
@@ -243,7 +246,7 @@ class RealTimeRGBDSLAM:
         return CameraCalibration(self.K, w, h)
 
     def set_image_shape(self, image_shape):
-        self._image_shape = tuple(image_shape[:2][::-1])
+        self._image_shape = tuple(image_shape[:2])
 
     def reset(self):
         self.vo.reset()
