@@ -94,7 +94,6 @@ def run_demo(frames=30, visualize=False, output_dir="outputs"):
     predictions = [predict_track(t, 2.0) for t in (object_a, object_b)]
     collision = predict_pair_collision(object_a, object_b, horizon_s=3.0,
                                        safety_margin_m=.08)
-    elapsed_placeholder = 0.0
     report = {
         "lesson": 57, "frames": frames,
         "frame_history": flow_reports,
