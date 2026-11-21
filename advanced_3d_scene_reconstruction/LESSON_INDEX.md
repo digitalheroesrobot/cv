@@ -254,3 +254,26 @@ Input clouds must already be ego-motion compensated and expressed in one stable
 world frame. This is a classical scene-flow baseline, not learned scene flow or
 complete dynamic SLAM. Nearest-neighbour correspondence is sensitive to
 occlusion, changing point density, and residual pose drift.
+
+
+### Lesson 57 — Advanced Scene Flow and Motion Prediction
+
+- Interpolate sparse reciprocal point correspondences into a local dense-ish 3D motion field.
+- Classify locally coherent and inconsistent flow as rigid-like and non-rigid-like motion.
+- Register consecutive dynamic object point clouds using point-to-point ICP.
+- Predict future object positions from tracked metric position and velocity.
+- Estimate closest approach and conservative sphere-based collision risk.
+- Visualize 3D motion vectors and future trajectories.
+
+Run offline:
+
+```bash
+python lesson57_scene_flow_motion_prediction.py --frames 30 --visualize
+python -m unittest -v tests.test_motion_prediction
+```
+
+The inputs must already be ego-motion compensated and expressed in a common
+world frame. Flow interpolation can blur object boundaries; local consistency
+does not prove physical rigidity; ICP needs overlap; prediction assumes
+constant velocity; collision screening uses circumscribed spheres and is not
+a safety-rated robot collision avoidance system.
