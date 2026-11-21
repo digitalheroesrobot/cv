@@ -266,3 +266,29 @@ python -m unittest -v tests.test_temporal_mapping
 Lesson 44 uses local point-cloud geometry and does not download models or call
 remote inference services. It is a teaching baseline for sequential ICP mapping,
 not a loop-closure or globally optimized SLAM implementation.
+
+
+## Lesson 45 — ORB RGB-D Visual Odometry
+
+- [Runnable Lesson 45](lesson45_rgbd_visual_odometry.py)
+- [ORB + RGB-D PnP engine](visual_odometry/feature_vo.py)
+- [Technical notes and limitations](visual_odometry/README.md)
+- [Numerical tests](tests/test_visual_odometry.py)
+
+Run the local synthetic demo:
+
+```bash
+python lesson45_rgbd_visual_odometry.py --synthetic --visualize
+python -m unittest -v tests.test_visual_odometry
+```
+
+For a locally connected Intel RealSense D435:
+
+```bash
+python lesson45_rgbd_visual_odometry.py --realsense
+```
+
+Lesson 45 uses ORB descriptors, Essential Matrix RANSAC, and RGB-D PnP.
+The Essential Matrix is scale-ambiguous; metric translation comes from
+previous-frame depth lifted into 3D. This is a local visual-odometry front-end,
+not a complete SLAM system.
