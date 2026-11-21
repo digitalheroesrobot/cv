@@ -42,7 +42,7 @@ class TestPoseGraph(unittest.TestCase):
                                          translation_information=1.0,
                                          rotation_information=2.0))
         # Verified loop edge: final camera pose should coincide with node zero.
-        graph.add_edge(PoseGraphEdge(0, 4, np.eye(4),
+        graph.add_edge(PoseGraphEdge(0, 4, relative(truth[0], truth[4]),
                                      translation_information=20.0,
                                      rotation_information=20.0,
                                      kind="loop"))
