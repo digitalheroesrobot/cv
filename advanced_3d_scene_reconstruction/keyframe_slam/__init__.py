@@ -4,9 +4,11 @@ from .keyframe_manager import Keyframe, KeyframeManager, LoopCandidateDetector
 from .geometric_loop_closure import (
     RGBDLoopClosureVerifier, LoopVerificationResult, rebuild_global_map,
 )
+from .realtime import RealTimeRGBDSLAM, SLAMFrameResult
 
 __all__ = [
     "PoseGraph", "PoseGraphEdge", "PoseGraphResult",
     "Keyframe", "KeyframeManager", "LoopCandidateDetector",
     "RGBDLoopClosureVerifier", "LoopVerificationResult", "rebuild_global_map",
+    "RealTimeRGBDSLAM", "SLAMFrameResult",
 ]
