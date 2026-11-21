@@ -12,7 +12,7 @@ By the end of this level, you will be able to:
 
 1. Process recorded or live camera video with Python.
 2. Calibrate cameras and transform points between coordinate frames.
-3. estimate depth and create metric point clouds when sufficient sensor or calibration information is available.
+3. Estimate depth and create metric point clouds when sufficient sensor or calibration information is available.
 4. Detect and segment objects in images.
 5. Represent scenes in Bird's-Eye View (BEV) and 3D voxel occupancy grids.
 6. Estimate 3D object position, dimensions, orientation, and motion.
