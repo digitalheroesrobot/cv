@@ -20,6 +20,10 @@ from .rig_calibration import (
     stereo_result_to_rig_edge,
 )
 from .capture import CaptureBundle, MultiCameraCaptureManager
+from .dynamic_scene import (
+    SceneFlowResult, DynamicSceneResult, estimate_scene_flow,
+    points_inside_track_boxes, DynamicSceneModel,
+)
 from .object_tracking import (
     Detection3D, FusedDetection3D, MultiCameraDetectionFusion,
     ConstantVelocityKalman, MultiCamera3DTracker,
@@ -40,5 +44,6 @@ __all__ = [
     "interpolate_camera_pose", "CaptureBundle",
     "MultiCameraCaptureManager", "Detection3D", "FusedDetection3D",
     "MultiCameraDetectionFusion", "ConstantVelocityKalman",
-    "MultiCamera3DTracker",
+    "MultiCamera3DTracker", "SceneFlowResult", "DynamicSceneResult",
+    "estimate_scene_flow", "points_inside_track_boxes", "DynamicSceneModel",
 ]
