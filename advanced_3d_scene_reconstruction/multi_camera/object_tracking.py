@@ -80,6 +80,7 @@ class TrackState:
     confidence: float
     timestamp: float
     first_timestamp: float
+    last_detection_timestamp: float
     age: int = 1
     hits: int = 1
     missed: int = 0
@@ -278,7 +279,7 @@ class MultiCamera3DTracker:
             self.next_track_id, detection.label, state, covariance,
             detection.dimensions.copy(), detection.quaternion_xyzw.copy(),
             detection.confidence, detection.timestamp, detection.timestamp,
-            camera_ids=detection.camera_ids,
+            detection.timestamp, camera_ids=detection.camera_ids,
             embedding=None if detection.embedding is None else detection.embedding.copy())
         self.tracks[self.next_track_id] = track
         self.next_track_id += 1
@@ -292,7 +293,6 @@ class MultiCamera3DTracker:
         fused = self.fusion.fuse(detections)
         if any(abs(d.timestamp - timestamp) > 0.05 for d in fused):
             raise ValueError("Detection timestamps do not match tracker update time")
-        dt_global = 0.0 if self.last_timestamp is None else timestamp - self.last_timestamp
         for track in self.tracks.values():
             dt = timestamp - track.timestamp
             track.state, track.covariance = self.kalman.predict(
@@ -327,6 +327,7 @@ class MultiCamera3DTracker:
                 track.quaternion_xyzw = (1-alpha)*track.quaternion_xyzw + alpha*q
                 track.quaternion_xyzw /= max(np.linalg.norm(track.quaternion_xyzw), 1e-12)
                 track.confidence = detection.confidence
+                track.last_detection_timestamp = timestamp
                 track.hits += 1
                 track.missed = 0
                 track.camera_ids = detection.camera_ids
@@ -344,7 +345,7 @@ class MultiCamera3DTracker:
         expired = [
             track_id for track_id, track in self.tracks.items()
             if track.missed > self.max_missed_frames
-            or timestamp - track.first_timestamp > self.max_track_age_s + dt_global * self.max_missed_frames
+            or timestamp - track.last_detection_timestamp > self.max_track_age_s
         ]
         for track_id in expired:
             del self.tracks[track_id]
