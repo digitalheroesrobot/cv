@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-LESSONS = {
+SHOW_PLOTS = True\n\nLESSONS = {
 2: ("Camera streams, timestamps, and synchronization", "Measure frame timing, dropped frames, and timestamp alignment."),
 3: ("Image preprocessing and dataset organization", "Build a reproducible preprocessing pipeline and inspect dataset quality."),
 4: ("Pinhole camera model and intrinsics", "Understand focal length, principal point, and lens projection."),
@@ -179,7 +179,7 @@ def main(default_lesson:int):
     parser=argparse.ArgumentParser(description=f"Run lesson {default_lesson:02d} of the 3D scene reconstruction course.")
     parser.add_argument("--video",default=None,help="Optional input video. Synthetic road scene is used when omitted.")
     parser.add_argument("--output",default="outputs",help="Directory for reports and generated artifacts.")
-    parser.add_argument("--no-display",action="store_true",help="Reserved for headless runs; plots are disabled in a future headless extension.")
+    parser.add_argument("--no-display",action="store_true",help="Run without opening visualization windows.")
     args=parser.parse_args()
     lesson_run(default_lesson,args.video,args.output,args.no_display)
 
