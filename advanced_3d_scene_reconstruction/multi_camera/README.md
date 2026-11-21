@@ -222,3 +222,28 @@ does not estimate ego motion. Nearest-neighbour scene flow is sensitive to
 occlusion, point sampling, and pose drift; unknown points are intentionally
 not classified as dynamic. Track-box masking currently uses axis-aligned
 extents and ignores object orientation.
+
+
+## 12. Lesson 57 — Scene flow and motion prediction
+
+`motion_prediction.py` adds:
+
+- `estimate_local_scene_flow`: inverse-distance interpolation of sparse
+  reciprocal correspondences into a local dense-ish motion field.
+- `decompose_rigid_nonrigid`: local flow-consistency classification.
+- `register_dynamic_cloud`: point-to-point ICP, source-to-target transform.
+- `predict_track`: constant-velocity future position prediction.
+- `predict_pair_collision`: closest-approach screening using circumscribed
+  spheres around tracked 3D boxes.
+- `motion_vector_field`: deterministic vector subsampling for visualization.
+
+Run:
+
+```bash
+python lesson57_scene_flow_motion_prediction.py --frames 30 --visualize
+python -m unittest -v tests.test_motion_prediction
+```
+
+These are transparent geometric baselines, not neural scene flow, exact
+rigid-body decomposition, continuous oriented-box collision detection, or
+safety-rated robotics functions.
