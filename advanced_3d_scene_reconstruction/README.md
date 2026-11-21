@@ -370,3 +370,34 @@ known PnP initialization. It does not claim real-image loop closure. ORB
 matching proposes candidates; RGB-D PnP and ICP geometric verification must
 succeed before a loop edge is accepted. Map rebuilding is voxel point fusion,
 not TSDF or mesh reconstruction.
+
+
+## Lesson 49 — Real-time RGB-D SLAM integration
+
+Lesson 49 brings the camera adapters, ORB RGB-D visual odometry, ICP fusion,
+keyframe management, RGB-D geometric loop verification, pose graph
+optimization, and global point-map reintegration into one executable flow.
+
+- [Runnable Lesson 49](lesson49_realtime_rgbd_slam.py)
+- [Integrated online SLAM engine](keyframe_slam/realtime.py)
+- [Keyframe SLAM subsystem](keyframe_slam/README.md)
+- [Offline integration tests](tests/test_realtime_slam.py)
+
+For an Intel RealSense D435 connected locally:
+
+```bash
+python lesson49_realtime_rgbd_slam.py --realsense --visualize
+```
+
+Press q to stop. The program saves a PLY point map and JSON trajectory report
+in `outputs/`. A hardware-free synthetic backend demonstration is available:
+
+```bash
+python lesson49_realtime_rgbd_slam.py --synthetic --visualize
+python -m unittest -v tests.test_realtime_slam
+```
+
+The synthetic mode validates graph optimization and map reintegration; it
+does not emulate ORB tracking or real-camera loop closure. Real loop edges
+require feature matches, RGB-D PnP, and ICP geometric consistency. This is a
+local educational SLAM integration, not a production system.
