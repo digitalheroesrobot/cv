@@ -41,6 +41,34 @@ def _require_cv2():
         raise RuntimeError("OpenCV is required. Install opencv-python locally.") from exc
 
 
+
+def rectify_rgbd(image, depth_m, K, distortion):
+    """Locally undistort a registered RGB-D pair with OpenCV Brown-Conrady D.
+
+    Uses the same rectification map for color and depth; depth uses nearest
+    interpolation to avoid blending foreground/background measurements.
+    The returned images retain K as their rectified camera matrix.
+    """
+    cv2 = _require_cv2()
+    image = np.asarray(image)
+    depth = np.asarray(depth_m, dtype=np.float32)
+    K = np.asarray(K, dtype=np.float64)
+    D = np.asarray(distortion, dtype=np.float64).reshape(-1)
+    if image.shape[:2] != depth.shape or K.shape != (3, 3):
+        raise ValueError("RGB-D dimensions must match and K must be 3x3")
+    h, w = depth.shape
+    map_x, map_y = cv2.initUndistortRectifyMap(
+        K, D, None, K, (w, h), cv2.CV_32FC1)
+    rectified_image = cv2.remap(
+        image, map_x, map_y, cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT)
+    rectified_depth = cv2.remap(
+        depth, map_x, map_y, cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT)
+    rectified_depth[~np.isfinite(rectified_depth) | (rectified_depth <= 0)] = np.nan
+    return rectified_image, rectified_depth
+
+
 def backproject_keypoints(keypoints_uv, depth_m, K, min_depth_m=0.15,
                           max_depth_m=8.0, patch_radius=2):
     """Sample robust local median Z and back-project keypoint pixels to XYZ."""
