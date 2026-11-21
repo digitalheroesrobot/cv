@@ -88,6 +88,13 @@ class RealSenseD435Adapter:
         self._frame_id += 1
         return sample
 
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
     def close(self) -> None:
         if self._pipeline is not None:
             self._pipeline.stop()
