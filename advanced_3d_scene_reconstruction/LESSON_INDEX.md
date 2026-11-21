@@ -231,3 +231,26 @@ This lesson consumes detections that have already been transformed into a
 shared metric world frame. The synthetic demo validates the tracking backend;
 it is not a neural detector, learned ReID model, or production multi-camera MOT
 benchmark.
+
+
+### Lesson 56 — Dynamic 4D Scene Understanding and Static/Dynamic Separation
+
+- Estimate reciprocal nearest-neighbour scene flow between sequential world-frame point clouds.
+- Classify matched observations as static or dynamic using metric motion thresholds.
+- Preserve unmatched observations as unknown to avoid confusing disocclusion with motion.
+- Build a bounded static voxel map while preventing moving points from contaminating it.
+- Cluster dynamic point observations into spatial components.
+- Optionally mask points inside tracked-object 3D boxes.
+- Visualize point motion and export temporal scene diagnostics.
+
+Run offline:
+
+```bash
+python lesson56_dynamic_4d_scene_understanding.py --frames 45 --visualize
+python -m unittest -v tests.test_dynamic_scene
+```
+
+Input clouds must already be ego-motion compensated and expressed in one stable
+world frame. This is a classical scene-flow baseline, not learned scene flow or
+complete dynamic SLAM. Nearest-neighbour correspondence is sensitive to
+occlusion, changing point density, and residual pose drift.
