@@ -208,3 +208,26 @@ extrinsics. Supply clock calibration when devices do not already share a
 validated timestamp domain. Software timestamp pairing is not hardware
 exposure synchronization. The PLY output is a latest-frame snapshot, not a
 persistent dynamic SLAM map.
+
+
+### Lesson 55 — Multi-Camera 3D Object Tracking and Data Association
+
+- Represent per-camera detections as metric 3D observations in the common world frame.
+- Fuse duplicate detections across cameras while preserving separate same-camera objects.
+- Use Hungarian assignment for globally consistent frame-to-track matching.
+- Gate associations by semantic class, 3D Mahalanobis distance, object dimensions, and optional appearance embeddings.
+- Estimate position and velocity with a constant-velocity Kalman filter.
+- Maintain track IDs through short observation gaps and expire stale tracks.
+- Export trajectories, velocities, track diagnostics, and a 3D visualization.
+
+Run offline:
+
+```bash
+python lesson55_multicamera_3d_tracking.py --frames 100 --visualize
+python -m unittest -v tests.test_object_tracking
+```
+
+This lesson consumes detections that have already been transformed into a
+shared metric world frame. The synthetic demo validates the tracking backend;
+it is not a neural detector, learned ReID model, or production multi-camera MOT
+benchmark.
