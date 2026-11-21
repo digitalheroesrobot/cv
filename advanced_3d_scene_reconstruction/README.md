@@ -128,3 +128,14 @@ The first run without a video creates a small synthetic demo clip, so the pipeli
 ## Capstone
 
 The capstone takes camera observations through perception and 3D scene representation, then exports object poses and geometry for a simulator. The target is a useful spatial digital twin, not merely a visually attractive 3D rendering.
+
+
+## Advanced research extension (Lessons 31–42)
+
+After completing the 30 core lessons, continue to the research-level track covering feed-forward geometry transformers (VGGT and related point-map models), dynamic 4D correspondences, metric depth uncertainty, SAM 3.1 open-vocabulary video perception, Gaussian Splatting, Gaussian-SLAM, 4D occupancy, and occupancy world models.
+
+- [Advanced Research Track — technical syllabus and papers](advanced_research/README.md)
+- [Advanced track — getting started and execution](advanced_research/GETTING_STARTED.md)
+- [Advanced mathematical demo engine](advanced_research/advanced_core.py)
+
+The advanced track distinguishes runnable mathematical reference labs from actual pretrained research models. Official checkpoints are optional and must be installed with their own verified dependency and license requirements.
