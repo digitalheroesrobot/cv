@@ -51,30 +51,22 @@ def make_textured_scene(width, height, seed=5):
 
 
 def warp_pair(image, depth, K, T_current_previous):
-    """Render an approximate second view using a local depth-based inverse warp.
+    """Create a small translated teaching pair using a local affine warp.
 
-    This renderer is a controlled teaching fixture. Real camera mode uses the
-    actual sensor frames; it is not intended to model occlusion perfectly.
+    The fixture approximates lateral motion at mean scene depth. It is not a
+    physically complete renderer and does not model occlusion or parallax.
     """
     import cv2
+    mean_depth = float(np.nanmedian(depth))
+    # For small lateral motion, delta_u ~= fx * t_x / Z.
+    dx = float(K[0, 0] * T_current_previous[0, 3] / mean_depth)
+    dy = float(K[1, 1] * T_current_previous[1, 3] / mean_depth)
+    A = np.array([[1., 0., dx], [0., 1., dy]], dtype=np.float32)
     h, w = depth.shape
-    yy, xx = np.mgrid[0:h, 0:w]
-    z = depth
-    X = (xx - K[0, 2]) * z / K[0, 0]
-    Y = (yy - K[1, 2]) * z / K[1, 1]
-    points = np.stack([X, Y, z], axis=-1).reshape(-1, 3)
-    R = T_current_previous[:3, :3]
-    t = T_current_previous[:3, 3]
-    current = points @ R.T + t
-    uvw = current @ K.T
-    u = (uvw[:, 0] / uvw[:, 2]).reshape(h, w)
-    v = (uvw[:, 1] / uvw[:, 2]).reshape(h, w)
-    map_x, map_y = u.astype(np.float32), v.astype(np.float32)
-    warped = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR,
-                       borderMode=cv2.BORDER_CONSTANT)
-    # Approximate z-buffer by remapping depth; enough for controlled demo.
-    warped_depth = cv2.remap(depth, map_x, map_y, cv2.INTER_NEAREST,
-                             borderMode=cv2.BORDER_CONSTANT)
+    warped = cv2.warpAffine(image, A, (w, h), flags=cv2.INTER_LINEAR,
+                            borderMode=cv2.BORDER_CONSTANT)
+    warped_depth = cv2.warpAffine(depth, A, (w, h), flags=cv2.INTER_NEAREST,
+                                  borderMode=cv2.BORDER_CONSTANT)
     warped_depth[warped_depth <= 0] = np.nan
     return warped, warped_depth
 
