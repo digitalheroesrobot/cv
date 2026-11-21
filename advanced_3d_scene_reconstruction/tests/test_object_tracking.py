@@ -82,6 +82,15 @@ class TestMultiCamera3DTracker(unittest.TestCase):
         second = tracker.update([det(0, .1, label="person")], .1)
         self.assertNotEqual(second[0].track_id, first)
 
+    def test_track_expires_after_max_age_without_observations(self):
+        tracker = MultiCamera3DTracker(min_hits=1, max_track_age_s=.25,
+                                       max_missed_frames=20)
+        tracker.update([det(0, 0)], 0)
+        tracker.update([], .1)
+        tracker.update([], .2)
+        tracker.update([], .3)
+        self.assertEqual(tracker.diagnostics()["active_tracks"], 0)
+
     def test_timestamp_must_increase(self):
         tracker = MultiCamera3DTracker(min_hits=1)
         tracker.update([det(0, 1)], 1)
