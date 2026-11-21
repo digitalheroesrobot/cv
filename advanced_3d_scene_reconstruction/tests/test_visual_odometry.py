@@ -47,7 +47,7 @@ class TestRGBDVisualOdometry(unittest.TestCase):
         T, inliers, rmse, _ = estimate_rgbd_pnp(
             self.prev_uv, self.curr_uv, self.depth, self.K,
             min_depth_m=1., max_depth_m=5., reprojection_threshold_px=1.5,
-            min_inliers=30)
+            min_inliers=30, patch_radius=0)
         self.assertGreaterEqual(inliers, 30)
         self.assertLess(rmse, 1.0)
         np.testing.assert_allclose(T[:3, 3], self.T[:3, 3], atol=.025)
