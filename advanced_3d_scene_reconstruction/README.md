@@ -492,3 +492,29 @@ The anchor camera defines the rig origin and orientation (gauge fixing).
 Approximate covariance is local and depends on residual scaling, edge quality,
 and graph conditioning. It is not a substitute for a full calibration
 uncertainty analysis.
+
+
+## Lesson 53 — Multi-camera clock synchronization and temporal alignment
+
+Lesson 53 separates sensor timestamps from the master time domain. It fits
+affine clock offset and drift from paired synchronization events, converts
+camera timestamps, aligns frames under a skew budget, tracks queue/drop
+statistics, and interpolates camera poses using SO(3) SLERP.
+
+- [Runnable Lesson 53](lesson53_multicamera_time_synchronization.py)
+- [Clock fitting and frame aligner](multi_camera/time_sync.py)
+- [RealSense timestamp-domain metadata](camera_adapters/realsense_d435.py)
+- [Offline numerical tests](tests/test_time_sync.py)
+
+Run locally:
+
+```bash
+python lesson53_multicamera_time_synchronization.py --visualize
+python -m unittest -v tests.test_time_sync
+```
+
+Clock fitting requires paired observations of the same synchronization event.
+Arbitrary host arrival times are not valid clock pairs because transport and
+scheduler latency vary. Software timestamp conversion is not hardware
+exposure synchronization. Preserve and inspect each RealSense timestamp
+domain; do not assume separate devices share a clock without validation.
