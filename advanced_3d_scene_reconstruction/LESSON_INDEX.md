@@ -33,3 +33,20 @@ python -m unittest -v test_course_core.py
 
 The tests check the pinhole projection equations, expected inverse-depth scaling,
 synthetic frame validity, report generation, and invalid lesson handling.
+
+### Lesson 47 — Keyframe RGB-D SLAM and Pose Graph Optimization
+
+- Keyframe selection from translation, rotation, frame gap, and tracking quality.
+- ORB descriptor matching for appearance-based loop candidate ranking.
+- Relative SE(3) pose graph with explicit transform direction and a fixed gauge anchor.
+- Robust nonlinear least-squares optimization with weighted rotation/translation residuals.
+- Synthetic square-loop experiment demonstrating global drift correction.
+
+Run:
+```bash
+python lesson47_keyframe_rgbd_slam.py --synthetic --visualize
+python -m unittest -v tests.test_keyframe_slam
+```
+
+A visual match is only a loop candidate. Add a loop edge only after geometric verification using RGB-D constraints such as PnP and ICP.
+
