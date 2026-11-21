@@ -43,3 +43,31 @@ python -m unittest -v tests.test_multi_camera
 
 The unit tests do not require OpenCV, cameras, or GPU. Chessboard calibration
 functions require `opencv-python` and physical calibration images.
+
+
+## 6. Lesson 51 synchronized RGB-D world reconstruction
+
+`reconstruction.py` provides `MultiCameraReconstructor`. It accepts one
+`CameraSample` per calibrated camera, rejects timestamp skew beyond a
+configured tolerance, rectifies registered color/depth, creates metric
+camera-local clouds, applies supplied `T_world_camera` transforms, and fuses
+the result in a common world frame.
+
+Run the offline demonstration from the course root:
+
+```bash
+python lesson51_multi_camera_reconstruction.py --visualize
+python -m unittest -v tests.test_multi_camera_reconstruction
+```
+
+Important assumptions:
+
+- All camera timestamps must share a clock domain or have a validated clock
+  conversion. Independent camera hardware clocks are not automatically
+  synchronized by this software.
+- Extrinsics are supplied, not estimated by the fusion engine.
+- Depth must be registered to the color image.
+- The current rectification helper supports pinhole distortion; fisheye needs
+  a dedicated calibration/rectification implementation.
+- Voxel fusion removes/reduces duplicate samples but is not a TSDF, mesh, or
+  radiometric color-blending reconstruction.
