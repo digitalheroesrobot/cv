@@ -14,6 +14,7 @@ class Keyframe:
     depth_m: Optional[np.ndarray] = None
     descriptors: Optional[np.ndarray] = None
     keypoints: Optional[list] = None
+    point_cloud: Optional[np.ndarray] = None
 
     def __post_init__(self):
         self.T_world_camera = np.asarray(self.T_world_camera, dtype=float).copy()
@@ -21,6 +22,10 @@ class Keyframe:
             raise ValueError("T_world_camera must be 4x4")
         if self.depth_m is not None:
             self.depth_m = np.asarray(self.depth_m, dtype=np.float32).copy()
+        if self.point_cloud is not None:
+            self.point_cloud = np.asarray(self.point_cloud, dtype=np.float64).copy()
+            if self.point_cloud.ndim != 2 or self.point_cloud.shape[1] != 3:
+                raise ValueError("point_cloud must have shape (N,3)")
 
 
 class KeyframeManager:
