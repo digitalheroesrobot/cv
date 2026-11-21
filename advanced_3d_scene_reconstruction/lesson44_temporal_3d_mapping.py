@@ -23,6 +23,7 @@ import argparse
 import numpy as np
 from common.geometry import make_se3, transform_points, invert_se3
 from temporal_mapping import TemporalPointCloudMapper
+from scene_reconstruction import depth_to_point_cloud
 
 
 def rotation_y(angle):
@@ -63,12 +64,61 @@ def visualize_map(points):
     plt.show()
 
 
+def run_realsense(args):
+    """Process D435 frames locally; no model download or network service."""
+    from camera_adapters.realsense_d435 import RealSenseD435Adapter
+    mapper = TemporalPointCloudMapper(
+        map_voxel_size_m=args.map_voxel,
+        registration_voxel_size_m=args.registration_voxel,
+        max_correspondence_distance_m=args.max_correspondence,
+        dynamic_residual_threshold_m=args.dynamic_threshold)
+    print("D435 temporal mapping active. Ctrl+C stops capture.")
+    try:
+        with RealSenseD435Adapter(width=args.width, height=args.height,
+                                  fps=args.fps) as camera:
+            frame_count = 0
+            while frame_count < args.max_frames:
+                sample = camera.read()
+                if sample is None or sample.depth is None or sample.calibration is None:
+                    continue
+                cloud = depth_to_point_cloud(
+                    sample.depth, sample.calibration,
+                    color_image=None, stride=args.stride,
+                    min_depth_m=args.min_depth, max_depth_m=args.max_depth)
+                result = mapper.integrate(cloud.points)
+                frame_count += 1
+                print(f"frame={frame_count:05d} points={len(cloud.points):5d} "
+                      f"map={len(result.map_points_world):6d} "
+                      f"icp_rmse={result.registration.rmse_m:.5f}m "
+                      f"dynamic={len(result.dynamic_points_current):5d}")
+    except KeyboardInterrupt:
+        print("Capture interrupted.")
+    print(f"Final local map contains {len(mapper.map_points_world)} points.")
+    if args.visualize and len(mapper.map_points_world):
+        visualize_map(mapper.map_points_world)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--frames", type=int, default=8)
     parser.add_argument("--visualize", action="store_true")
+    parser.add_argument("--realsense", action="store_true")
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument("--max-frames", type=int, default=300)
+    parser.add_argument("--stride", type=int, default=4)
+    parser.add_argument("--min-depth", type=float, default=0.25)
+    parser.add_argument("--max-depth", type=float, default=5.0)
+    parser.add_argument("--map-voxel", type=float, default=0.03)
+    parser.add_argument("--registration-voxel", type=float, default=0.04)
+    parser.add_argument("--max-correspondence", type=float, default=0.15)
+    parser.add_argument("--dynamic-threshold", type=float, default=0.10)
     parser.add_argument("--seed", type=int, default=13)
     args = parser.parse_args()
+    if args.realsense:
+        run_realsense(args)
+        return
     if args.frames < 2:
         parser.error("--frames must be at least 2")
     scene = make_static_scene(args.seed)
