@@ -3,7 +3,7 @@
 import unittest
 import numpy as np
 from common.geometry import make_se3, transform_points
-from visual_odometry import backproject_keypoints, estimate_rgbd_pnp
+from visual_odometry import backproject_keypoints, estimate_rgbd_pnp, rectify_rgbd
 
 
 class TestRGBDVisualOdometry(unittest.TestCase):
@@ -19,8 +19,9 @@ class TestRGBDVisualOdometry(unittest.TestCase):
             rng.uniform(-.7, .7, 500),
             rng.uniform(-.5, .5, 500),
             rng.uniform(2., 4.5, 500)])
+        c, s = np.cos(.02), np.sin(.02)
         self.T = make_se3(
-            np.array([[.9998, 0., .02], [0., 1., 0.], [-.02, 0., .9998]]),
+            np.array([[c, 0., s], [0., 1., 0.], [-s, 0., c]]),
             np.array([.04, -.015, .02]))
         self.moved = transform_points(self.points, self.T)
         self.prev_uv = self._project(self.points)
@@ -51,6 +52,14 @@ class TestRGBDVisualOdometry(unittest.TestCase):
         self.assertGreaterEqual(inliers, 30)
         self.assertLess(rmse, 1.0)
         np.testing.assert_allclose(T[:3, 3], self.T[:3, 3], atol=.025)
+
+    def test_rectification_identity_for_zero_distortion(self):
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        depth = np.full((480, 640), 2.0, dtype=np.float32)
+        rectified_image, rectified_depth = rectify_rgbd(
+            image, depth, self.K, np.zeros(5))
+        self.assertEqual(rectified_image.shape, image.shape)
+        np.testing.assert_allclose(rectified_depth[20:-20, 20:-20], 2.0, atol=1e-6)
 
     def test_depth_sampling_rejects_invalid(self):
         depth = np.zeros((480, 640), dtype=np.float32)
