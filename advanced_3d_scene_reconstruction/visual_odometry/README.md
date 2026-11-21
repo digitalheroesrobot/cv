@@ -47,3 +47,11 @@ matching, or robust long-term map maintenance. Repeated texture, motion blur,
 low texture, dynamic objects, and weak depth coverage can cause failure.
 The synthetic warp is a controlled educational fixture, not a physically
 complete renderer with visibility-aware z-buffering.
+
+
+The D435 live path rectifies the registered color/depth pair locally using the
+factory color intrinsics and distortion coefficients before feature extraction.
+Depth is remapped with nearest-neighbour interpolation to avoid averaging
+measurements across depth discontinuities. The rectification helper currently
+assumes OpenCV-compatible Brown-Conrady coefficients; verify the active
+RealSense stream's distortion model before using a different camera model.
