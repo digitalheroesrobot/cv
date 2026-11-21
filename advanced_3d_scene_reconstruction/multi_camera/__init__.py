@@ -19,6 +19,10 @@ from .rig_calibration import (
     calibrate_camera_rig,
     stereo_result_to_rig_edge,
 )
+from .time_sync import (
+    ClockFitResult, ClockModel, MultiCameraClockSynchronizer,
+    fit_clock_model, interpolate_camera_pose,
+)
 
 __all__ = [
     "FrameSynchronizer", "SynchronizedFrames", "StereoCalibrationResult",
@@ -26,5 +30,7 @@ __all__ = [
     "reprojection_rmse", "fuse_point_clouds", "MultiCameraFrameResult",
     "MultiCameraReconstructor", "rectify_registered_rgbd", "RigCalibrationResult",
     "RigEdge", "RigPoseGraph", "calibrate_camera_rig",
-    "stereo_result_to_rig_edge",
+    "stereo_result_to_rig_edge", "ClockFitResult", "ClockModel",
+    "MultiCameraClockSynchronizer", "fit_clock_model",
+    "interpolate_camera_pose",
 ]
