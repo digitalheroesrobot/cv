@@ -36,3 +36,17 @@ overlap, repeated geometry, dynamic-dominant scenes, and degenerate geometry
 can cause failure. Drift accumulates because this lesson has no loop closure,
 pose graph optimization, bundle adjustment, or relocalization. Residual-based
 dynamic candidates are heuristic, not semantic motion segmentation.
+
+
+## Intel RealSense D435 live input
+
+Lesson 44 also accepts a locally connected D435 through the existing camera
+adapter:
+
+    python lesson44_temporal_3d_mapping.py --realsense --visualize
+
+The live mode uses the D435 aligned depth stream, its reported depth scale,
+and the active color-camera intrinsics. It does not use cloud services. Start
+with a static scene and slow camera motion; ICP requires overlap between
+successive frames. Tune voxel size, stride, correspondence distance, and depth
+range for the sensor mounting and environment.
