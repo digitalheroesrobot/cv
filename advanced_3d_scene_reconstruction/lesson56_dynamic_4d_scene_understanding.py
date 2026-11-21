@@ -63,8 +63,10 @@ def run_demo(frames=45, visualize=False, output_dir="outputs"):
         dynamic_cluster_voxel_m=.10, min_cluster_points=6)
     history = []
     final = None
+    final_input_points = np.empty((0, 3), dtype=np.float64)
     started = time.perf_counter()
     for timestamp, points in make_sequence(frames):
+        final_input_points = points
         final = model.update(points, timestamp)
         history.append({
             "timestamp": timestamp,
@@ -111,15 +113,11 @@ def run_demo(frames=45, visualize=False, output_dir="outputs"):
         moving = np.flatnonzero(final.scene_flow.labels == 1)
         if len(moving):
             sample = moving[::max(1, len(moving)//80)]
-            ax.quiver(final.dynamic_points[:0, 0], final.dynamic_points[:0, 1],
-                      final.dynamic_points[:0, 2], [], [], [])
             # Draw only a small, readable subset of valid flow vectors.
-            cur = make_sequence(frames)[-1][1]
-            if len(cur) == len(final.scene_flow.flow):
-                p = cur[sample]
-                v = final.scene_flow.flow[sample]
-                ax.quiver(p[:, 0], p[:, 1], p[:, 2], v[:, 0], v[:, 1],
-                          v[:, 2], length=1.0, normalize=False)
+            p = final_input_points[sample]
+            v = final.scene_flow.flow[sample]
+            ax.quiver(p[:, 0], p[:, 1], p[:, 2], v[:, 0], v[:, 1],
+                      v[:, 2], length=1.0, normalize=False)
         ax.set_xlabel("World X (m)")
         ax.set_ylabel("World Y (m)")
         ax.set_zlabel("World Z (m)")
