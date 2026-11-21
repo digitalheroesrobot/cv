@@ -75,11 +75,16 @@ def run_synthetic(args):
         max_correspondence_m=.22, min_correspondences=30)
     rng = np.random.default_rng(args.seed)
     points_world = make_scene(args.seed, 4500)
-    pose_world_camera = np.eye(4)
+    true_pose_world_camera = np.eye(4)
     results = []
     for frame_index in range(args.frames):
-        # Static world points expressed in the current camera coordinate frame.
-        points_camera = transform_points(points_world, np.linalg.inv(pose_world_camera))
+        # Move the virtual camera through a static world. This ground-truth
+        # trajectory is independent of the estimated/fused trajectory.
+        if frame_index > 0:
+            true_step = make_se3(np.eye(3), np.array([.018, 0.0, 0.0]))
+            true_pose_world_camera = true_pose_world_camera @ true_step
+        points_camera = transform_points(
+            points_world, np.linalg.inv(true_pose_world_camera))
         if frame_index == 0:
             frame_image = image.copy()
         else:
@@ -90,12 +95,13 @@ def run_synthetic(args):
         vo_result = vo.process(frame_image, depth)
         result = fusion.integrate(points_camera, vo_result)
         results.append(result)
-        if result.success:
-            pose_world_camera = result.T_world_current
+        translation_error = float(np.linalg.norm(
+            result.T_world_current[:3, 3] - true_pose_world_camera[:3, 3]))
         print(f"frame={frame_index:03d} success={result.success} "
               f"visual={result.visual_used} icp={result.icp_used} "
               f"v_score={result.visual_score:.3f} i_score={result.icp_score:.3f} "
               f"ICP_RMSE={result.icp_rmse_m:.4f}m "
+              f"pose_error={translation_error:.4f}m "
               f"map_points={len(fusion.map_points_world)} {result.message}")
     print("Final fused camera pose:")
     print(np.array2string(fusion.T_world_previous, precision=5, suppress_small=True))
@@ -108,6 +114,7 @@ def run_synthetic(args):
         ax.scatter(sample[:, 0], sample[:, 1], sample[:, 2], s=1)
         p = fusion.T_world_previous[:3, 3]
         ax.scatter([p[0]], [p[1]], [p[2]], s=70, marker="^")
+        ax.set_box_aspect((1, 1, 1))
         ax.set_title("Lesson 46 — Fused local 3D map and camera pose")
         ax.set_xlabel("World X (m)"); ax.set_ylabel("World Y (m)"); ax.set_zlabel("World Z (m)")
         plt.tight_layout(); plt.show()
