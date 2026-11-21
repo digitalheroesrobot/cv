@@ -15,3 +15,10 @@ The camera-to-3D course now includes a research-level extension on modern multi-
 
 - [Advanced research syllabus and references](advanced_3d_scene_reconstruction/advanced_research/README.md)
 - [Advanced track getting started](advanced_3d_scene_reconstruction/advanced_research/GETTING_STARTED.md)
+
+
+## Research Extensions: Lessons 43–66
+
+The course roadmap now extends to 66 lessons with additional research modules on multi-view geometry transformers, metric depth and uncertainty, neural rendering, dynamic 4D scenes, multi-camera fusion, open-world 3D understanding, occupancy world models, and real-time deployment.
+
+- [Research Extensions — Lessons 43–66](advanced_3d_scene_reconstruction/research_extensions/README.md)
