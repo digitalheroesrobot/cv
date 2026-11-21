@@ -50,8 +50,12 @@ class SyntheticRGBDAdapter:
         self.calibration = CameraCalibration(
             K, self.width, self.height, np.zeros(5), "pinhole",
             f"{self.camera_id}_synthetic")
+    @property
+    def exhausted(self):
+        return self.index >= self.frame_limit
+
     def read(self):
-        if self.index >= self.frame_limit:
+        if self.exhausted:
             return None
         target = self.start_time + self.index / self.fps
         delay = target - time.monotonic()
