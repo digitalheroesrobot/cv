@@ -196,3 +196,29 @@ This is a tracking backend lab, not a complete multi-camera MOT system. A
 production deployment still needs a validated detector, calibrated 3D
 uncertainty, learned appearance/ReID, robust occlusion handling, and evaluation
 on representative sequences.
+
+
+## 11. Lesson 56 — Dynamic 4D scene understanding
+
+`dynamic_scene.py` provides:
+
+- `estimate_scene_flow`: reciprocal nearest-neighbour point displacement
+  between consecutive ego-motion-compensated world clouds.
+- `SceneFlowResult`: per-point flow, speed, correspondence, confidence, and
+  tri-state label (-1 unknown, 0 static, 1 dynamic).
+- `DynamicSceneModel`: static/dynamic/unknown separation, bounded static
+  voxel map, and dynamic spatial connected components.
+- `points_inside_track_boxes`: optional axis-aligned track-box masking.
+
+Run the offline experiment and tests:
+
+```bash
+python lesson56_dynamic_4d_scene_understanding.py --frames 45 --visualize
+python -m unittest -v tests.test_dynamic_scene
+```
+
+All point clouds must be expressed in the same stable world frame. This module
+does not estimate ego motion. Nearest-neighbour scene flow is sensitive to
+occlusion, point sampling, and pose drift; unknown points are intentionally
+not classified as dynamic. Track-box masking currently uses axis-aligned
+extents and ignores object orientation.
