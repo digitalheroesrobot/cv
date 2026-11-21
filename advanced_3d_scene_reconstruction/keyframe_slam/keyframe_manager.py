@@ -58,9 +58,10 @@ class KeyframeManager:
                 gap >= self.max_frame_gap or tracking_quality < 0.35)
 
     def add(self, frame_index, timestamp, T_world_camera, image=None,
-            depth_m=None, descriptors=None, keypoints=None):
+            depth_m=None, descriptors=None, keypoints=None, point_cloud=None):
         keyframe = Keyframe(len(self.keyframes), float(timestamp),
-                            T_world_camera, image, depth_m, descriptors, keypoints)
+                            T_world_camera, image, depth_m, descriptors,
+                            keypoints, point_cloud)
         self.keyframes.append(keyframe)
         self.last_selected_frame = int(frame_index)
         return keyframe
