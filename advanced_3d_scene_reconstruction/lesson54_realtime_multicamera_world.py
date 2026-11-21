@@ -82,7 +82,10 @@ def save_ply(path, points, colors=None):
     points = np.asarray(points, dtype=np.float32)
     if colors is None:
         colors = np.full((len(points), 3), 180, np.uint8)
-    colors = np.asarray(colors, dtype=np.uint8)
+    colors = np.asarray(colors, dtype=np.float32)
+    if colors.size and colors.max() <= 1.0:
+        colors = colors * 255.0
+    colors = np.clip(colors, 0, 255).astype(np.uint8)
     with open(path, "w", encoding="ascii") as f:
         f.write("ply\nformat ascii 1.0\n")
         f.write(f"element vertex {len(points)}\n")
@@ -153,16 +156,9 @@ def run_pipeline(adapters, poses, clock_models, max_frames=30,
     elapsed = time.perf_counter() - started
     stats = manager.snapshot_stats()
     if clouds:
-        points = np.concatenate([c.points for c in clouds], axis=0)
-        colors = (np.concatenate([c.colors for c in clouds], axis=0)
-                  if all(c.colors is not None for c in clouds) else None)
-        # Keep the most recent bounded world snapshot, then voxel fuse it.
-        from multi_camera.fusion import fuse_point_clouds
-        from common import PointCloud
-        cloud = PointCloud(points, clouds[-1].timestamp, "world", colors)
-        # Reuse the same voxel aggregator with identity pose.
-        cloud = fuse_point_clouds({"world": cloud}, {"world": np.eye(4)},
-                                  target_frame="world", voxel_size=0.025)
+        # Export the latest frame as a temporally coherent world snapshot.
+        # Accumulating all frames here would create ghost trails for moving objects.
+        cloud = clouds[-1]
     else:
         from common import PointCloud
         cloud = PointCloud(np.empty((0, 3)), 0.0, "world")
