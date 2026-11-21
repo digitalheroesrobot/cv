@@ -21,7 +21,8 @@ class TestClockSync(unittest.TestCase):
         master = scale * device + offset
         fit = fit_clock_model(device, master)
         self.assertAlmostEqual(fit.model.scale, scale, places=9)
-        self.assertAlmostEqual(fit.model.offset_s, offset, places=7)
+        expected_reference_offset = offset + (scale - 1.0) * np.mean(device)
+        self.assertAlmostEqual(fit.model.offset_s, expected_reference_offset, places=7)
         self.assertLess(fit.model.residual_rmse_s, 1e-8)
 
     def test_robust_fit_rejects_bad_pair(self):
