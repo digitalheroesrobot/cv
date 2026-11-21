@@ -139,3 +139,10 @@ After completing the 30 core lessons, continue to the research-level track cover
 - [Advanced mathematical demo engine](advanced_research/advanced_core.py)
 
 The advanced track distinguishes runnable mathematical reference labs from actual pretrained research models. Official checkpoints are optional and must be installed with their own verified dependency and license requirements.
+
+
+## Research Extension (Lessons 43–66)
+
+Continue beyond the first research track with 24 additional lessons covering transformer-based 3D perception, foundation depth models, metric scale and uncertainty, neural rendering, dynamic 4D reconstruction, multi-camera calibration and fusion, open-world 3D understanding, occupancy forecasting, risk-aware planning interfaces, GPU optimization, streaming reliability, and the final Camera-to-3D World Intelligence capstone.
+
+- [Research Extensions — Lessons 43–66](research_extensions/README.md)
