@@ -344,3 +344,29 @@ trajectory drift. ORB matching only proposes loop candidates; geometric
 verification is mandatory before adding a loop edge. This is a sparse SLAM
 backend teaching implementation, not a complete production SLAM system.
 
+
+
+## Lesson 48 — RGB-D geometric loop closure and global map correction
+
+Lesson 48 verifies a loop candidate using a metric RGB-D PnP initialization,
+point-cloud ICP refinement, and PnP/ICP consistency gates. Only accepted
+geometric constraints are eligible for insertion into the pose graph. Stored
+keyframe-local clouds can then be reintegrated using optimized camera poses.
+
+- [Runnable Lesson 48](lesson48_rgbd_geometric_loop_closure.py)
+- [Geometric loop verifier and global map rebuild](keyframe_slam/geometric_loop_closure.py)
+- [Keyframe SLAM documentation](keyframe_slam/README.md)
+- [Numerical tests](tests/test_geometric_loop_closure.py)
+
+Run offline:
+
+```bash
+python lesson48_rgbd_geometric_loop_closure.py --synthetic --visualize
+python -m unittest -v tests.test_geometric_loop_closure
+```
+
+The synthetic experiment validates the geometric consistency gate with a
+known PnP initialization. It does not claim real-image loop closure. ORB
+matching proposes candidates; RGB-D PnP and ICP geometric verification must
+succeed before a loop edge is accepted. Map rebuilding is voxel point fusion,
+not TSDF or mesh reconstruction.
